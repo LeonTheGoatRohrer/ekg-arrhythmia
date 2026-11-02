@@ -84,6 +84,7 @@ __all__ = [
     "DataIncompleteError",
     "PENDING_REASON",
     "build_signal_demo",
+    "build_rhythm_demo",
     "build_segmentation_demo",
     "build_architecture",
     "build_filter_response",
@@ -113,6 +114,7 @@ CACHE_VERSION = 1
 DECIMALS = 4
 DETECTION_TOL_MS = 150
 DEMO_WINDOW_S = 10.0
+RHYTHM_WINDOW_S = 60.0
 EXAMPLES_PER_CLASS = 12
 DEFAULT_VAL_RECORDS = 4
 
@@ -352,6 +354,54 @@ def build_signal_demo(record: Record, window_s: float = DEMO_WINDOW_S, start_s: 
     }
 
 
+def build_rhythm_demo(record: Record, window_s: float = RHYTHM_WINDOW_S, lead_s: float = 3.0,
+                      decimate: int = 2) -> dict:
+    """rhythm_demo.json: a longer filtered stretch plus expert beat labels for the animated player.
+
+    Candidate windows start ``lead_s`` before each non-N beat; the one collecting the
+    rarest classes wins (same ``1 / count`` weights as :func:`choose_demo_window`), so
+    it opens with normal beats and then shows the abnormal ones. The signal is already
+    band-limited to 40 Hz, so keeping every ``decimate``-th sample (180 Hz) is alias-free
+    and only shrinks the file.
+    """
+    fs = int(record.fs)
+    n = int(record.signal.size)
+    win = min(int(round(window_s * fs)), n)
+    samples, labels, symbols = _reference_beats(record)
+    counts = np.bincount(labels, minlength=len(CLASSES))
+    special = np.flatnonzero(labels != CLASSES.index("N"))
+    weights = np.zeros(samples.size)
+    weights[special] = 1.0 / counts[labels[special]]
+    edge = int(round(0.4 * fs))
+    start, best = 0, -1.0
+    for i in special:
+        s = int(np.clip(samples[i] - round(lead_s * fs), 0, n - win))
+        score = float(weights[(samples >= s) & (samples < s + win - edge)].sum())
+        if score > best + 1e-12:
+            start, best = s, score
+    end = start + win
+
+    x = preprocess(record.signal, fs)
+    inside = (samples >= start) & (samples < end)
+    beats = [{"t": round((int(s) - start) / fs, 3), "symbol": sym, "aami": CLASSES[int(lab)]}
+             for s, lab, sym, keep in zip(samples, labels, symbols, inside) if keep]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record": record.name,
+        "lead": getattr(record, "lead", "MLII"),
+        "fs": fs // decimate,
+        "source_fs": fs,
+        "unit": "mV",
+        "start_s": round(start / fs, 3),
+        "duration_s": round(win / fs, 3),
+        "filtered": _round(x[start:end:decimate], 3),
+        "beats": beats,
+        "note": "Gefiltertes Signal (MLII) mit den Schlag-Annotationen der Kardiologen "
+                "(AAMI-Klasse), kein Modell-Output. Für die Anzeige auf "
+                f"{fs // decimate} Hz ausgedünnt.",
+    }
+
+
 def build_segmentation_demo(record: Record, per_class: int = EXAMPLES_PER_CLASS) -> dict:
     """segmentation_demo.json: up to ``per_class`` real beats per AAMI class present.
 
@@ -482,6 +532,11 @@ def run_demo(record_path: str | Path, out_dir: str | Path, *, data_dir: str | Pa
     _log(f"signal_demo.json: Fenster {sig['start_s']:.1f}–{sig['start_s'] + sig['duration_s']:.1f} s; "
          f"R-Zacken Record {record.name}: TP={d['tp']} FP={d['fp']} FN={d['fn']} "
          f"Sens={d['sensitivity']:.4f} PPV={d['ppv']:.4f}")
+
+    rhythm = build_rhythm_demo(record)
+    written["rhythm_demo.json"] = _write_json(out_dir / "rhythm_demo.json", rhythm, compact=True)
+    _log(f"rhythm_demo.json: {rhythm['start_s']:.1f}–{rhythm['start_s'] + rhythm['duration_s']:.1f} s, "
+         f"{len(rhythm['beats'])} Schläge")
 
     seg = build_segmentation_demo(record)
     written["segmentation_demo.json"] = _write_json(out_dir / "segmentation_demo.json", seg, compact=True)

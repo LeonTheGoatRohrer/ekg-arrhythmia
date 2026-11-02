@@ -32,6 +32,7 @@ from starlette.types import Receive, Scope, Send
 DATA_WHITELIST: frozenset[str] = frozenset(
     {
         "signal_demo",
+        "rhythm_demo",
         "filter_response",
         "architecture",
         "segmentation_demo",

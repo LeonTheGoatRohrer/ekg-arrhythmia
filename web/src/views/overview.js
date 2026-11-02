@@ -4,6 +4,7 @@
 import { loadJSON } from '../lib/data.js';
 import { esc, fmt, pct, icon } from '../lib/dom.js';
 import { diagramCard, mountDiagramCards } from '../lib/ui.js';
+import { renderRhythmPlayer } from '../components/rhythm-player.js';
 
 const AAMI = [
   { cls: 'N', name: 'Normal', desc: 'Normalschläge, Links-/Rechtsschenkelblock, atriale und nodale Ersatzschläge', symbols: 'N L R e j' },
@@ -201,7 +202,19 @@ export async function render(root) {
           <a href="#/status" class="btn btn-ghost">${icon('users')} Agenten-Status</a>
         </div>
       </div>
-      <div class="min-w-0" data-hero-signal>${heroSignalCard(null, true)}</div>
+      <div class="min-w-0 space-y-4">
+        <div data-hero-signal>${heroSignalCard(null, true)}</div>
+        <div class="card overflow-hidden">
+          <div class="card-head">
+            <div class="min-w-0">
+              <p class="eyebrow">Rhythmus-Player</p>
+              <p class="mt-0.5 truncate text-sm font-semibold">Auffällige Schläge live</p>
+            </div>
+            <span class="chip">${icon('activity', 'size-3')}rhythm_demo.json</span>
+          </div>
+          <div data-rhythm>${'<div class="skeleton h-72 w-full"></div>'}</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -281,14 +294,18 @@ export async function render(root) {
   const cleanupDiagrams = mountDiagramCards(root);
   let alive = true;
 
-  const [signal, arch, stats, metrics] = await Promise.all([
+  let player = null;
+
+  const [signal, arch, stats, metrics, rhythm] = await Promise.all([
     loadJSON('signal_demo.json'),
     loadJSON('architecture.json'),
     loadJSON('dataset_stats.json'),
     loadJSON('metrics.json'),
+    loadJSON('rhythm_demo.json'),
   ]);
   if (alive) {
     root.querySelector('[data-hero-signal]').innerHTML = heroSignalCard(signal);
+    player = renderRhythmPlayer(root.querySelector('[data-rhythm]'), rhythm);
     root.querySelector('[data-banner]').innerHTML = bannerMarkup({ stats, metrics });
     root.querySelector('[data-tiles]').innerHTML = tilesMarkup(buildTiles({ signal, arch, stats, metrics }));
   }
@@ -296,6 +313,7 @@ export async function render(root) {
   return {
     destroy() {
       alive = false;
+      player?.destroy();
       cleanupDiagrams();
     },
   };

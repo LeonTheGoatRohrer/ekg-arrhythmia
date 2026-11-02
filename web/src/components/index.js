@@ -11,3 +11,4 @@ export { renderTrainingCurve } from './training-curve.js';
 export { renderConfusionMatrix } from './confusion-matrix.js';
 export { renderTreeView } from './tree-view.js';
 export { renderDatasetStats } from './dataset-stats.js';
+export { renderRhythmPlayer } from './rhythm-player.js';

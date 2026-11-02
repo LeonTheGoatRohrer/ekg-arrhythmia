@@ -56,8 +56,8 @@ def demo_out(tmp_path_factory):
 
 def test_demo_writes_expected_files(demo_out):
     names = {p.name for p in demo_out.iterdir() if p.is_file()}
-    expected = {"signal_demo.json", "segmentation_demo.json", "filter_response.json", "architecture.json",
-                "dataset_stats.json", "metrics.json", "project_state.json"}
+    expected = {"signal_demo.json", "rhythm_demo.json", "segmentation_demo.json", "filter_response.json",
+                "architecture.json", "dataset_stats.json", "metrics.json", "project_state.json"}
     assert expected <= names
     assert "tree.json" not in names  # never in demo mode
     for n in expected:
@@ -89,6 +89,20 @@ def test_signal_demo_schema(demo_out):
     assert det["scope"] == "record" and det["tp"] + det["fn"] == 2273
     assert d["detection_window"]["scope"] == "window"
     assert d["start_s"] == pytest.approx(d["start_sample"] / 360, abs=1e-4)
+
+
+def test_rhythm_demo_schema(demo_out):
+    d = _strict_load(demo_out / "rhythm_demo.json")
+    assert d["record"] == "100" and d["fs"] == 180 and d["source_fs"] == 360
+    assert len(d["filtered"]) == round(d["duration_s"] * d["fs"]) == 60 * 180
+    assert _max_decimals(d["filtered"][:500]) <= 3
+    times = [b["t"] for b in d["beats"]]
+    assert times == sorted(times) and all(0 <= t < d["duration_s"] for t in times)
+    assert all(b["aami"] in CLASSES for b in d["beats"])
+    # opens on normal beats, then shows record 100's single V beat and several S beats
+    assert d["beats"][0]["aami"] == "N"
+    assert sum(b["aami"] == "V" for b in d["beats"]) == 1
+    assert sum(b["aami"] == "S" for b in d["beats"]) >= 2
 
 
 def test_segmentation_demo_schema(demo_out):

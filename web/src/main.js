@@ -7,16 +7,19 @@ import { initTheme, getTheme, setTheme } from './lib/theme.js';
 import { icon, logoMark, esc } from './lib/dom.js';
 import * as overview from './views/overview.js';
 import * as process from './views/process.js';
+import * as models from './views/models.js';
 import * as status from './views/status.js';
 
 const ROUTES = {
   '': { view: overview, label: 'Übersicht', title: 'Übersicht' },
   process: { view: process, label: 'Process', title: 'Process' },
+  modelle: { view: models, label: 'Modelle', title: 'Modelle' },
   status: { view: status, label: 'Agenten-Status', title: 'Agenten-Status' },
 };
 const NAV = [
   { key: '', href: '#/' },
   { key: 'process', href: '#/process' },
+  { key: 'modelle', href: '#/modelle' },
   { key: 'status', href: '#/status' },
 ];
 
