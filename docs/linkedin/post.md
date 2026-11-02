@@ -2,7 +2,7 @@
 
 Target: 150–250 words, hook first. Copy the post from the rendered view; the `<!-- … -->`
 comments are repo notes and not part of the text. This post: **231 words** (without comments,
-hashtags included; "79 %" counts as two). Suggested media: a short screen recording of the rhythm player and the
+hashtags included; a number followed by " %" counts as two words). Suggested media: a short screen recording of the rhythm player and the
 Process view of the live demo.
 
 <!-- METRICS: all model numbers of this post are in the paragraph between METRICS:START and METRICS:END (preliminary, from web/public/data/metrics.json, 2026-11-02). Replace it after the final DS2 evaluation and re-count the words. -->

@@ -359,12 +359,15 @@ python -m ekg.pipeline cv --features base --n-val 0 --epochs 15 --lr-schedule co
 
 - **Code:** MIT License, see [LICENSE](LICENSE).
 - **Data:** MIT-BIH Arrhythmia Database from PhysioNet, licensed under the Open Data Commons
-  Attribution License (ODC-By) 1.0. Record 100 in `data/sample/` and the demo exports derived
-  from it come from this database. The full database is not in the repo; `make data` downloads it
-  from PhysioNet.
+  Attribution License (ODC-By) 1.0; it is not covered by the MIT License. Record 100 in
+  `data/sample/` as well as the web exports and screenshots derived from it come from this
+  database. The full database is not in the repo; `make data` downloads it from PhysioNet.
+  Details and attribution: [DATA_LICENSE.md](DATA_LICENSE.md).
 
 ## References
 
+- G. Moody, R. Mark: MIT-BIH Arrhythmia Database (version 1.0.0). PhysioNet, 2005.
+  [doi:10.13026/C2F305](https://doi.org/10.13026/C2F305)
 - G. B. Moody, R. G. Mark: The impact of the MIT-BIH Arrhythmia Database. *IEEE Engineering in
   Medicine and Biology* 20(3), 45–50, 2001.
 - A. L. Goldberger et al.: PhysioBank, PhysioToolkit, and PhysioNet. *Circulation* 101(23),
