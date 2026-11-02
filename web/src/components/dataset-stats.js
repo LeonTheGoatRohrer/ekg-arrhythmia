@@ -25,7 +25,7 @@ export function renderDatasetStats(container, data, opts = {}) {
   const root = makeRoot(container, { label: tr('Datensatz-Statistik je Split und Klasse', 'Dataset statistics per split and class'), name: 'dataset' });
   const tiles = h('div', { class: 'ekc-tiles', style: { marginBottom: '12px' } }, root);
   for (const sp of splits) tile(tiles, { label: SPLIT_LABELS[sp] || sp, value: fmt(totals[sp]), sub: tr('Herzschläge', 'beats') });
-  if (data.records_available != null) tile(tiles, { label: 'Records', value: fmt(data.records_available), sub: data.status && data.status !== 'complete' ? `Status: ${data.status}` : tr('verfügbar', 'available') });
+  if (data.records_available != null) tile(tiles, { label: 'Records', value: fmt(data.records_available), sub: data.status && data.status !== 'complete' ? `Status: ${data.status}` : tr('ohne 4 Schrittmacher-Records', 'excl. 4 paced records') });
 
   let mode = 'share';
   const bar = h('div', { class: 'ekc-toolbar' }, root);

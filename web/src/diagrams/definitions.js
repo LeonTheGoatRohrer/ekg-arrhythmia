@@ -222,7 +222,7 @@ const DE = {
       'Der Mother-Agent liest vor jeder Welle project_state.json und startet nur Module, deren Abhängigkeiten erfüllt ' +
       'sind (max. 16 Agents parallel). In Welle 1 arbeiten 13 Agents gleichzeitig an disjunkten Dateien; jeder meldet ' +
       'über das State-Protokoll start, done oder fail. Fehlgeschlagene Module werden mit korrigierter Anweisung neu ' +
-      'gestartet, ohne die übrigen zu blockieren. Das Volltraining war blockiert, solange physionet.org gesperrt war, und wurde lokal nachgeholt.',
+      'gestartet, ohne die übrigen zu blockieren. Das Volltraining wartete, bis die vollständige Datenbank vorlag (physionet.org war in der Build-Umgebung nicht erreichbar), und wurde dann lokal nachgeholt.',
     source: `flowchart TD
   state[("project_state.json<br/>zentrale Status-Datei")]:::data
   mother(["Mother-Agent<br/>Orchestrator · max. 16 parallel"]):::result
@@ -458,7 +458,7 @@ const EN = {
       'Before each wave, the mother agent reads project_state.json and starts only modules whose dependencies are met ' +
       '(max. 16 agents in parallel). In wave 1, 13 agents work simultaneously on disjoint files; each reports start, ' +
       'done or fail via the state protocol. Failed modules are restarted with corrected instructions without blocking ' +
-      'the others. The full training was blocked while physionet.org was inaccessible and was completed locally later.',
+      'the others. The full training waited until the complete database was available (physionet.org was not reachable in the build environment) and was then completed locally.',
     source: `flowchart TD
   state[("project_state.json<br/>central status file")]:::data
   mother(["Mother agent<br/>orchestrator · max. 16 in parallel"]):::result

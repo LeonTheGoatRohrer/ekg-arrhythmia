@@ -95,7 +95,7 @@ function buildTiles({ signal, arch, stats, metrics }) {
   }
   if (stats && stats.status && stats.status !== 'pending') {
     const rc = recordsCount(stats.records_available);
-    if (rc != null) tiles.push({ label: tr('Records verfügbar', 'Records available'), value: fmt(rc), unit: '', hint: tr('MIT-BIH, lokal geladen', 'MIT-BIH, loaded locally'), src: 'dataset_stats.json' });
+    if (rc != null) tiles.push({ label: tr('Records verfügbar', 'Records available'), value: fmt(rc), unit: '', hint: tr('von 48 MIT-BIH-Records · die 4 Schrittmacher-Records 102, 104, 107, 217 sind nach AAMI ausgeschlossen', 'of 48 MIT-BIH records · the 4 paced records 102, 104, 107, 217 are excluded per AAMI'), src: 'dataset_stats.json' });
     const ds1 = sumCounts(stats.per_split?.DS1);
     const ds2 = sumCounts(stats.per_split?.DS2);
     if (ds1 != null) tiles.push({ label: tr('Beats DS1 (Training)', 'Beats DS1 (training)'), value: fmt(ds1), unit: '', hint: tr('de Chazal Inter-Patient-Split', 'de Chazal inter-patient split'), src: 'dataset_stats.json' });
@@ -144,15 +144,13 @@ function bannerMarkup({ stats, metrics }) {
   return `<div class="notice" role="status">
     <span class="notice-icon">${icon('alert', 'size-5')}</span>
     <div class="min-w-0">
-      <p class="text-sm font-semibold text-fg">${tr('Vollständige MIT-BIH-Datenbank nicht geladen', 'Full MIT-BIH database not loaded')}</p>
+      <p class="text-sm font-semibold text-fg">${tr('Modell-Kennzahlen noch nicht exportiert', 'Model metrics not exported yet')}</p>
       <p class="mt-1 text-[15px] leading-relaxed text-muted">${tr(`
-        <span class="font-medium text-fg">physionet.org</span> ist in dieser Umgebung gesperrt, daher konnten die 48 Records nicht heruntergeladen werden.
+        Die Kennzahlen (Training DS1 → Test DS2) erscheinen, sobald die Pipeline <code class="font-mono text-xs">metrics.json</code> vollständig geschrieben hat – es werden bewusst keine Platzhalter- oder Einzel-Record-Ergebnisse gezeigt.
         Alle Signal-Demos nutzen den <span class="font-medium text-fg">echten MIT-BIH-Record 100</span>.
-        Modellmetriken (Training DS1 → Test DS2) erscheinen erst nach dem Volltraining – es werden bewusst keine Platzhalter- oder Einzel-Record-Ergebnisse gezeigt.
       `, `
-        <span class="font-medium text-fg">physionet.org</span> is blocked in this environment, so the 48 records could not be downloaded.
+        The metrics (training DS1 → test DS2) appear as soon as the pipeline has fully written <code class="font-mono text-xs">metrics.json</code> – placeholder or single-record results are deliberately not shown.
         All signal demos use the <span class="font-medium text-fg">real MIT-BIH record 100</span>.
-        Model metrics (training DS1 → test DS2) only appear after full training – placeholder or single-record results are deliberately not shown.
       `)}</p>
       ${reason ? `<p class="mt-2 text-[15px] text-muted">${tr('Grund laut Pipeline:', 'Reason reported by the pipeline:')} <span class="text-fg">${withCode(reason)}</span></p>` : ''}
       <div class="mt-3 flex flex-wrap gap-2">
@@ -235,7 +233,7 @@ export async function render(root) {
         `)}</p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="#/process" class="btn btn-primary">${tr('Process ansehen', 'View process')} ${icon('arrowRight')}</a>
-          <a href="#/status" class="btn btn-ghost">${icon('users')} ${tr('Agenten-Status', 'Agent status')}</a>
+          <a href="#/status" class="btn btn-ghost">${icon('users')} ${tr('Wie es gebaut wurde', 'How it was built')}</a>
         </div>
       </div>
       <div class="min-w-0 space-y-4">
@@ -309,7 +307,7 @@ export async function render(root) {
       ${[
         ['layers', tr('Inter-Patient statt Intra-Patient', 'Inter-patient instead of intra-patient'), tr('Training auf DS1, Test auf DS2 (de Chazal 2004). Kein Record taucht in beiden Mengen auf, und bis auf 201/202 (gleiche Person) auch kein Patient – sonst wären die Zahlen unrealistisch hoch.', 'Train on DS1, test on DS2 (de Chazal 2004). No record appears in both sets, and apart from 201/202 (same person) no patient either – otherwise the numbers would be unrealistically high.')],
         ['git', tr('Zwei Modelle, ein Vergleich', 'Two models, one comparison'), tr('1D-CNN mit RR-Intervall-Fusion für Genauigkeit, flacher Entscheidungsbaum auf interpretierbaren Merkmalen für Nachvollziehbarkeit.', '1D CNN with RR-interval fusion for accuracy, shallow decision tree on interpretable features for traceability.')],
-        ['lock', tr('Ehrliche Datenlage', 'Honest about the data'), tr('Kennzahlen stammen nur aus echten Exporten. Ohne vollständige Datenbank bleibt die Evaluierung sichtbar „ausstehend“.', 'Metrics come only from real exports. Without the full database, the evaluation visibly stays “pending”.')],
+        ['lock', tr('Ehrliche Zahlen', 'Honest numbers'), tr('Jede Kennzahl stammt aus einem echten Pipeline-Export, nichts ist von Hand eingetragen. Entschieden wird per Kreuzvalidierung auf DS1; der Test-Split DS2 wird erst ganz am Ende einmal ausgewertet.', 'Every metric comes from a real pipeline export; nothing is entered by hand. Decisions are made by cross-validation on DS1; the DS2 test split is evaluated only once, at the very end.')],
       ].map(([ic, t, d]) => `<div class="card p-5">
         <span class="grid size-9 place-items-center rounded-lg border border-line bg-surface-2 text-accent">${icon(ic)}</span>
         <p class="mt-4 text-[15px] font-semibold">${t}</p>
