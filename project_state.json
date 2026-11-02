@@ -8,7 +8,7 @@
     "max_parallel_agents": 16
   },
   "data_status": {
-    "mitdb_full": "unavailable (physionet.org blocked)",
+    "mitdb_full": "available (48 records, loaded locally)",
     "sample_records": [
       "100"
     ]

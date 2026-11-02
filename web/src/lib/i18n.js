@@ -1,4 +1,4 @@
-// Language handling: 'de' | 'en', persisted in localStorage. Default: browser language, else German.
+// Language handling: 'de' | 'en', persisted in localStorage. Default: German (the browser language is ignored).
 // Shared shell strings live in DICT and are read with t(key, vars); module-specific prose uses
 // tr(de, en) inline. Both read the current language at call time, so views must call them while
 // rendering (not at import time). setLang() sets <html lang> and dispatches window 'langchange'.
@@ -11,8 +11,7 @@ function detect() {
     const v = window.localStorage.getItem(STORAGE_KEY);
     if (LANGS.includes(v)) return v;
   } catch { /* storage unavailable */ }
-  const nav = (navigator.languages && navigator.languages[0]) || navigator.language || 'de';
-  return /^en\b/i.test(nav) ? 'en' : 'de';
+  return 'de';
 }
 
 let current = detect();
@@ -47,7 +46,7 @@ const DICT = {
     'nav.overview': 'Übersicht',
     'nav.process': 'Process',
     'nav.models': 'Modelle',
-    'nav.status': 'Agenten-Status',
+    'nav.status': 'Wie es gebaut wurde',
     'nav.main': 'Hauptnavigation',
     'nav.mobile': 'Mobile Navigation',
     'nav.home': 'EKG-Arrhythmie – Startseite',
@@ -72,7 +71,7 @@ const DICT = {
     'nav.overview': 'Overview',
     'nav.process': 'Process',
     'nav.models': 'Models',
-    'nav.status': 'Agent status',
+    'nav.status': 'How it was built',
     'nav.main': 'Main navigation',
     'nav.mobile': 'Mobile navigation',
     'nav.home': 'ECG arrhythmia – home',

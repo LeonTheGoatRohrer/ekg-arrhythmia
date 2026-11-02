@@ -81,7 +81,10 @@ function mitdbLabel(v) {
   if (v === false) return tr('nein', 'no');
   const t = String(v);
   if (/^unavailable/i.test(t)) return /physionet/i.test(t) ? tr('nicht verfügbar (physionet.org gesperrt)', 'unavailable (physionet.org blocked)') : tr('nicht verfügbar', 'unavailable');
-  if (/^(available|complete)/i.test(t)) return tr('verfügbar', 'available');
+  if (/^(available|complete)/i.test(t)) {
+    const n = /(\d+)\s*records/i.exec(t)?.[1];
+    return n ? tr(`ja – ${n} Records, lokal geladen`, `yes – ${n} records, loaded locally`) : tr('verfügbar', 'available');
+  }
   return t;
 }
 
@@ -228,7 +231,7 @@ function summaryMarkup(state, source) {
       <p class="eyebrow">${tr('Daten & Orchestrierung', 'Data & orchestration')}</p>
       <dl class="mt-3 space-y-2.5 text-[15px]">
         <div class="flex justify-between gap-4"><dt class="text-muted">${tr('MIT-BIH vollständig', 'Full MIT-BIH')}</dt><dd class="text-right font-medium break-words">${esc(mitdbLabel(ds.mitdb_full))}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-muted">${tr('Lokale Records', 'Local records')}</dt><dd class="text-right font-mono">${esc((ds.sample_records || []).join(', ') || '–')}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-muted">${tr('Demo-Record', 'Demo record')}</dt><dd class="text-right font-mono">${esc((ds.sample_records || []).join(', ') || '–')}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-muted">Orchestrator</dt><dd class="text-right font-mono">${esc(state.orchestrator?.name || '–')}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-muted">${tr('Max. parallele Agents', 'Max. parallel agents')}</dt><dd class="num text-right">${esc(maxPar ?? '–')}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-muted">${tr('Aktualisiert', 'Updated')}</dt><dd class="num text-right">${fmtTime(state.updated_at)}</dd></div>
@@ -238,13 +241,51 @@ function summaryMarkup(state, source) {
   </div>`;
 }
 
+/** Static intro: why agents, how the work was split, what the human decided. */
+function storyMarkup() {
+  const cards = [
+    ['users', tr('Warum Agenten?', 'Why agents?'), `<p class="text-[15px] leading-relaxed text-muted">${tr(
+      'Das Projekt besteht aus vielen klar trennbaren Teilen: Datenzugriff, Signalverarbeitung, zwei Modelle, Evaluation, API und Web-Oberfläche. Spezialisierte KI-Agenten bearbeiten sie parallel, jeder mit einem engen Auftrag und eigenen Tests. Das spart Zeit und erzwingt saubere Schnittstellen.',
+      'The project consists of many clearly separable parts: data access, signal processing, two models, evaluation, API and web UI. Specialized AI agents work on them in parallel, each with a narrow brief and its own tests. That saves time and enforces clean interfaces.',
+    )}</p>`],
+    ['layers', tr('Wie die Arbeit aufgeteilt war', 'How the work was split'), list([
+      tr('Ein Mother-Agent zerlegt den Masterplan in Module; jedes Modul gehört genau einem Sub-Agenten, der exklusiv seine eigenen Dateien bearbeitet.', 'A mother agent breaks the master plan into modules; each module belongs to exactly one sub-agent that exclusively edits its own files.'),
+      tr('Gearbeitet wird in Wellen: Gestartet werden nur Module, deren Abhängigkeiten fertig sind – in Welle 1 liefen 13 Agenten gleichzeitig (max. 16).', 'Work runs in waves: only modules whose dependencies are done get started – wave 1 ran 13 agents at once (max. 16).'),
+      tr('Bindende Interface-Verträge (INTERFACES.md) erlauben, Module parallel gegeneinander zu entwickeln; Abweichungen werden protokolliert.', 'Binding interface contracts (INTERFACES.md) allow modules to be developed against each other in parallel; deviations are logged.'),
+      tr('Jeder Agent meldet start, done oder fail über scripts/state.py – mit Datei-Lock und atomarem Schreiben, damit sich parallele Agenten nicht überschreiben.', 'Every agent reports start, done or fail through scripts/state.py – with a file lock and atomic writes, so parallel agents never overwrite each other.'),
+    ])],
+    ['checkCircle', tr('Der Mensch entscheidet', 'Human in the loop'), list([
+      tr('Ziel und fachliche Leitplanken vorgegeben: strikt inter-patient (DS1 → DS2), AAMI-Klassen, Macro-F1 statt Accuracy.', 'Set the goal and the domain guardrails: strictly inter-patient (DS1 → DS2), AAMI classes, macro F1 instead of accuracy.'),
+      tr('Zwischenergebnisse und Reviews geprüft und Korrekturen angestoßen – z. B. bleibt Record 208 mit fast allen F-Schlägen im Training statt in der Validierung.', 'Checked intermediate results and reviews and triggered fixes – e.g. record 208, with almost all F beats, stays in training instead of validation.'),
+      tr('Das Volltraining auf dem eigenen Rechner angestoßen und die Regel gesetzt: Der Test-Split DS2 wird erst ganz am Ende einmal ausgewertet.', 'Started the full training on a local machine and set the rule: the DS2 test split is evaluated only once, at the very end.'),
+    ])],
+  ];
+  return `<section aria-labelledby="st-story" class="space-y-5">
+    <div>
+      <p class="eyebrow">${tr('Die Geschichte dahinter', 'The story behind it')}</p>
+      <h2 id="st-story" class="mt-1 text-2xl font-semibold tracking-tight">${tr('Ein Team aus KI-Agenten – mit klaren Regeln', 'A team of AI agents – with clear rules')}</h2>
+      <p class="mt-2 max-w-3xl text-[15px] leading-relaxed text-muted">${tr(
+        'Code, Tests, Diagramme und Texte dieses Projekts haben orchestrierte KI-Agenten geschrieben. Unten steht das vollständige Protokoll: welcher Agent welches Modul gebaut hat, was er entschieden hat und welche Tests gelaufen sind.',
+        'The code, tests, diagrams and texts of this project were written by orchestrated AI agents. Below is the complete log: which agent built which module, what it decided and which tests ran.',
+      )}</p>
+    </div>
+    <div class="grid gap-3 lg:grid-cols-3">
+      ${cards.map(([ic, title, body]) => `<div class="card p-5">
+        <span class="grid size-9 place-items-center rounded-lg border border-line bg-surface-2 text-accent">${icon(ic)}</span>
+        <h3 class="mt-4 text-[15px] font-semibold">${title}</h3>
+        <div class="mt-1.5">${body}</div>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
 export async function render(root) {
   root.innerHTML = `
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
     <section class="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-10 pt-12 sm:pt-16">
       <div class="min-w-0">
-        <p class="eyebrow">${tr('Agenten-Status', 'Agent status')}</p>
-        <h1 class="mt-2 text-[32px] font-semibold leading-[1.1] tracking-tight sm:text-[40px]">${tr('Multi-Agenten-Orchestrierung', 'Multi-agent orchestration')}</h1>
+        <p class="eyebrow">${tr('Wie es gebaut wurde', 'How it was built')}</p>
+        <h1 class="mt-2 text-[32px] font-semibold leading-[1.1] tracking-tight sm:text-[40px]">${tr('Gebaut mit orchestrierten KI-Agenten', 'Built with orchestrated AI agents')}</h1>
         <p class="mt-3 max-w-2xl text-base leading-relaxed text-muted" data-project>${tr(
           'Live-Stand aus der zentralen Status-Datei <code class="font-mono text-sm">project_state.json</code> – jedes Modul wird von genau einem Sub-Agent bearbeitet.',
           'Live state from the central status file <code class="font-mono text-sm">project_state.json</code> – each module is handled by exactly one sub-agent.',
@@ -253,6 +294,7 @@ export async function render(root) {
       <button type="button" class="btn btn-ghost btn-sm" data-refresh>${icon('refresh', 'size-3.5')} ${tr('Aktualisieren', 'Refresh')}</button>
     </section>
     <div class="space-y-10 pt-10">
+      ${storyMarkup()}
       <div data-summary>${skeleton('11rem')}</div>
       ${diagramCard('agent-orchestration', { eyebrow: tr('Orchestrierung', 'Orchestration'), minHeight: '14rem' })}
       <div class="space-y-5" data-blocks>${skeleton('20rem')}</div>
