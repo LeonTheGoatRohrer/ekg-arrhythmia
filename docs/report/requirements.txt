@@ -1,0 +1,7 @@
+# Optional extra for docs/report/build_report.py (not part of pyproject.toml).
+# Install into the project venv:  python -m pip install -c constraints.txt -r docs/report/requirements.txt
+# Then once:                      python -m playwright install chromium   (an installed Chrome/Edge also works)
+matplotlib
+numpy
+qrcode
+playwright

@@ -1,0 +1,310 @@
+/* Print stylesheet for the project report (A4). Color tokens (--c-*) are injected
+   by build_report.py from web/src/style.css so the report matches the web UI. */
+
+@font-face { font-family: "Inter"; font-weight: 400; src: url("fonts/Inter-Regular.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 500; src: url("fonts/Inter-Medium.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 600; src: url("fonts/Inter-SemiBold.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 700; src: url("fonts/Inter-Bold.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; src: url("fonts/JetBrainsMono-Regular.ttf"); }
+
+@page {
+  size: A4;
+  margin: 17mm 18mm 19mm 18mm;
+  @bottom-left {
+    content: "ECG arrhythmia detection \2014  project report";
+    font: 400 7.2pt "Inter";
+    color: var(--c-muted);
+  }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font: 400 7.2pt "Inter";
+    color: var(--c-muted);
+  }
+}
+@page cover {
+  margin: 0;
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0;
+  font-family: "Inter", sans-serif;
+  font-size: 9.3pt;
+  line-height: 1.52;
+  color: var(--c-text);
+  font-feature-settings: "cv11";
+  text-rendering: geometricPrecision;
+}
+p { margin: 0 0 2.3mm; text-wrap: pretty; }
+ul { margin: 0 0 2.3mm; padding-left: 4.2mm; }
+li { margin-bottom: 0.9mm; }
+li::marker { color: var(--c-accent); }
+strong { font-weight: 600; }
+a { color: var(--c-accent); text-decoration: none; }
+code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86em;
+  background: var(--c-surface-2);
+  border-radius: 2px;
+  padding: 0 0.9mm;
+}
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--c-muted); }
+.small { font-size: 8pt; }
+
+/* ---------------------------------------------------------------- sections */
+section.chapter { break-before: page; }
+.kicker {
+  font-size: 7.4pt;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+  margin: 0 0 1mm;
+}
+h1 {
+  font-size: 20pt;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 3mm;
+  text-wrap: balance;
+}
+h2 {
+  font-size: 11.5pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 5mm 0 1.6mm;
+  break-after: avoid;
+}
+h3 {
+  font-size: 9.6pt;
+  font-weight: 600;
+  margin: 3mm 0 1mm;
+  break-after: avoid;
+}
+.lead { font-size: 10.6pt; line-height: 1.5; color: #334155; margin-bottom: 4mm; }
+.step-no {
+  display: inline-block;
+  min-width: 5.2mm;
+  padding: 0 1.2mm;
+  margin-right: 1.6mm;
+  border-radius: 1.4mm;
+  background: color-mix(in srgb, var(--c-accent) 12%, white);
+  color: var(--c-accent);
+  font-size: 8.4pt;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- layout */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start; }
+.cols.wide-left { grid-template-columns: 1.25fr 1fr; }
+.cols.wide-right { grid-template-columns: 1fr 1.25fr; }
+.cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+.avoid { break-inside: avoid; }
+
+.card {
+  border: 0.25mm solid var(--c-border);
+  border-radius: 2.2mm;
+  padding: 3.4mm 3.8mm;
+  background: var(--c-surface);
+  break-inside: avoid;
+}
+.card h3 { margin-top: 0; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+.callout {
+  background: var(--c-surface-2);
+  border-left: 0.8mm solid var(--c-accent);
+  border-radius: 0 2mm 2mm 0;
+  padding: 2.8mm 3.8mm;
+  margin: 3mm 0;
+  break-inside: avoid;
+}
+.callout.warn { border-left-color: var(--c-warn); }
+.callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+.callout-title { font-weight: 600; margin-bottom: 0.8mm; }
+
+/* ---------------------------------------------------------------- figures */
+figure { margin: 2.5mm 0 3mm; break-inside: avoid; }
+figure .fig-svg svg { display: block; max-width: 100%; height: auto; }
+figure img { display: block; max-width: 100%; }
+figcaption {
+  font-size: 7.7pt;
+  line-height: 1.45;
+  color: var(--c-muted);
+  margin-top: 1.4mm;
+}
+figcaption b { color: var(--c-text); font-weight: 600; }
+
+/* ---------------------------------------------------------------- tables */
+table { border-collapse: collapse; width: 100%; font-size: 8.3pt; font-variant-numeric: tabular-nums; }
+th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 7.3pt;
+  letter-spacing: 0.03em;
+  color: var(--c-muted);
+  border-bottom: 0.3mm solid var(--c-text);
+  padding: 1.2mm 1.6mm;
+  vertical-align: bottom;
+}
+td { padding: 1.1mm 1.6mm; border-bottom: 0.2mm solid var(--c-border); vertical-align: top; }
+td.r, th.r { text-align: right; }
+td.c, th.c { text-align: center; }
+tr.group td { border-bottom-color: var(--c-text); }
+tr.total td { font-weight: 600; border-top: 0.3mm solid var(--c-text); border-bottom: none; }
+tr.sub td { color: var(--c-muted); }
+th.grp { text-align: center; border-bottom: 0.2mm solid var(--c-raw); color: var(--c-text); }
+td.best { font-weight: 600; }
+table.layers td { padding-top: 0.8mm; padding-bottom: 0.8mm; }
+table.layers td.r { white-space: nowrap; }
+.lim { gap: 3.2mm; margin-bottom: 1mm; }
+.lim .card { font-size: 8.3pt; line-height: 1.45; padding: 3mm 3.2mm; }
+.cls {
+  display: inline-block;
+  min-width: 4.4mm;
+  padding: 0 1mm;
+  border-radius: 1mm;
+  font-weight: 700;
+  font-size: 0.92em;
+  text-align: center;
+  color: var(--cls);
+  background: color-mix(in srgb, var(--cls) 13%, white);
+}
+
+/* ---------------------------------------------------------------- pipeline strip */
+.flow { display: flex; align-items: stretch; gap: 0; margin: 2mm 0 4mm; }
+.flow .node {
+  flex: 1 1 0;
+  border: 0.25mm solid var(--c-border);
+  border-radius: 2mm;
+  padding: 2mm 2.2mm;
+  font-size: 7.6pt;
+  line-height: 1.35;
+  background: var(--c-surface);
+}
+.flow .node b { display: block; font-size: 8pt; margin-bottom: 0.6mm; }
+.flow .node.hl { border-color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 7%, white); }
+.flow .arrow {
+  flex: 0 0 4.2mm;
+  display: flex; align-items: center; justify-content: center;
+}
+.flow .arrow::after {
+  content: "";
+  border-left: 1.6mm solid var(--c-raw);
+  border-top: 1.2mm solid transparent;
+  border-bottom: 1.2mm solid transparent;
+}
+
+/* ---------------------------------------------------------------- KPI tiles */
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3.5mm; margin: 3mm 0 4mm; }
+.kpi {
+  border: 0.25mm solid var(--c-border);
+  border-radius: 2.2mm;
+  padding: 3mm 3.6mm 3.2mm;
+  border-top: 1mm solid var(--kc, var(--c-accent));
+  break-inside: avoid;
+}
+.kpi .label { font-size: 7.4pt; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-muted); }
+.kpi .values { display: flex; gap: 5mm; margin-top: 1.2mm; }
+.kpi .v { font-size: 17pt; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi .v small { font-size: 9pt; font-weight: 600; }
+.kpi .k { font-size: 7.3pt; color: var(--c-muted); }
+.kpi .note { font-size: 7.3pt; color: var(--c-muted); margin-top: 1.4mm; line-height: 1.35; }
+
+/* ---------------------------------------------------------------- split illustration */
+.split-demo { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 2mm 0 3mm; }
+.split-demo .card { padding: 2.8mm 3.2mm; }
+.split-demo .row { display: flex; align-items: center; gap: 1.4mm; margin: 1.2mm 0; font-size: 7.6pt; }
+.split-demo .row .lab { width: 11mm; color: var(--c-muted); font-weight: 600; }
+.split-demo .dot { width: 3.2mm; height: 3.2mm; border-radius: 0.8mm; display: inline-block; }
+.split-demo .verdict { font-size: 7.6pt; margin-top: 1.6mm; }
+.bad { color: var(--c-danger); font-weight: 600; }
+.good { color: var(--c-ok); font-weight: 600; }
+
+/* ---------------------------------------------------------------- agents diagram */
+.orch { display: grid; grid-template-columns: 1fr 52mm; gap: 4mm; margin: 2mm 0 3mm; }
+.orch .lane { display: flex; flex-direction: column; align-items: stretch; }
+.orch .box {
+  border: 0.25mm solid var(--c-border);
+  border-radius: 2mm;
+  padding: 2mm 3mm;
+  font-size: 7.8pt;
+  line-height: 1.38;
+  background: var(--c-surface);
+}
+.orch .box b { font-size: 8.3pt; }
+.orch .box.human { border-color: var(--c-accent-2); background: color-mix(in srgb, var(--c-accent-2) 7%, white); }
+.orch .box.mother { border-color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 8%, white); }
+.orch .down { text-align: center; color: var(--c-raw); font-size: 9pt; line-height: 1; margin: 0.8mm 0; }
+.orch .agents { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; margin-top: 1.4mm; }
+.orch .agents .box { padding: 1.6mm 2mm; font-size: 7.2pt; }
+.orch .side .box { margin-bottom: 2.5mm; }
+.orch .side .box.state { border-style: dashed; border-color: var(--c-accent); }
+.mono { font-family: "JetBrains Mono", monospace; font-size: 0.88em; }
+
+/* ---------------------------------------------------------------- cover */
+.cover {
+  page: cover;
+  height: 297mm;
+  width: 210mm;
+  position: relative;
+  overflow: hidden;
+  break-after: page;
+  background: var(--c-bg);
+}
+.cover .strip { position: absolute; left: 0; top: 0; width: 210mm; }
+.cover .strip svg { display: block; width: 210mm; height: auto; }
+/* Column that ends 14 mm above the page edge; the screenshot takes whatever height is left, so the cover never
+   overflows (content cut at the page edge is dropped when printing). */
+.cover .inner { position: absolute; left: 18mm; right: 18mm; top: 62mm; bottom: 14mm; display: flex; flex-direction: column; }
+.cover .brand { display: flex; align-items: center; gap: 2.4mm; font-weight: 600; font-size: 9.5pt; margin-bottom: 7mm; }
+.cover .brand .logo {
+  width: 7mm; height: 7mm; border-radius: 1.6mm; background: var(--c-accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.cover .tags { display: flex; flex-wrap: wrap; gap: 1.6mm; margin-bottom: 4mm; }
+.cover .tag {
+  font-size: 7.4pt; color: var(--c-muted); border: 0.25mm solid var(--c-border);
+  border-radius: 10mm; padding: 0.6mm 2.6mm; background: var(--c-surface); white-space: nowrap;
+}
+.cover .tag.prelim { color: var(--c-warn); border-color: var(--c-warn); font-weight: 600; }
+.cover h1 { font-size: 31pt; line-height: 1.06; letter-spacing: -0.03em; margin-bottom: 4.5mm; max-width: 165mm; }
+.cover .subtitle { font-size: 11.6pt; line-height: 1.5; color: #334155; max-width: 158mm; margin-bottom: 7mm; }
+.cover .meta { display: flex; gap: 9mm; font-size: 8.6pt; margin-bottom: 8mm; }
+.cover .meta .k { color: var(--c-muted); font-size: 7.2pt; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+.cover .meta .v { font-weight: 600; }
+.cover .shot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0.25mm solid var(--c-border);
+  border-radius: 2.6mm;
+  overflow: hidden;
+  box-shadow: 0 1.2mm 4mm rgb(15 23 42 / 0.10);
+  background: var(--c-surface);
+}
+.cover .shot .bar {
+  height: 5.2mm; display: flex; align-items: center; gap: 1.3mm; padding: 0 2.6mm;
+  border-bottom: 0.25mm solid var(--c-border); background: var(--c-surface-2);
+  font-size: 6.6pt; color: var(--c-muted);
+}
+.cover .shot .bar i { width: 1.8mm; height: 1.8mm; border-radius: 50%; background: var(--c-border); display: inline-block; }
+.cover .shot .bar span { margin-left: 2mm; }
+.cover .shot .bar { flex: none; }
+.cover .shot img { display: block; width: 100%; flex: 1 1 auto; min-height: 0; object-fit: cover; object-position: top; }
+
+/* ---------------------------------------------------------------- last page */
+.final { break-before: page; text-align: center; padding-top: 24mm; }
+.final .qr { width: 78mm; margin: 6mm auto 5mm; }
+.final .qr svg { display: block; width: 100%; height: auto; }
+.final .url { font-size: 13pt; font-weight: 600; color: var(--c-accent); margin-bottom: 2mm; }
+.final .links { display: inline-grid; grid-template-columns: auto auto; gap: 1.2mm 5mm; text-align: left; font-size: 9pt; margin: 4mm 0 0; }
+.final .links .k { color: var(--c-muted); }
+.refs { text-align: left; font-size: 7.6pt; line-height: 1.45; color: var(--c-muted); margin-top: 16mm; border-top: 0.25mm solid var(--c-border); padding-top: 3mm; }
+.refs ol { padding-left: 4.5mm; margin: 1mm 0 0; }
+.refs li { margin-bottom: 0.8mm; }

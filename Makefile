@@ -54,4 +54,7 @@ serve:              ## FastAPI-Server: API + gebaute UI auf http://127.0.0.1:$(P
 state:              ## project_state.json in die Web-Daten kopieren
 	$(PY) -m ekg.pipeline export-state --out $(WEB_DATA)
 
+report:             ## englischer PDF-Bericht aus web/public/data -> docs/report/ekg-arrhythmia-report.pdf (Extras: docs/report/requirements.txt)
+	$(PY) docs/report/build_report.py
+
 all: demo test web  ## Demo-Exporte, Tests, UI-Build
