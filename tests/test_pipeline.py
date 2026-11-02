@@ -360,3 +360,7 @@ def test_cv_without_validation_reports_epoch_snapshots(tmp_path):
     # the snapshot after the last epoch is the final model
     for r in rep["runs"]:
         assert r["by_epoch"]["2"]["macro_f1_nsvf"] == r["summary"]["macro_f1_nsvf"]
+    with np.load(tmp_path / "cv" / "cv_base_fixed_oof.npz") as z:
+        assert set(z.files) == {"y_true", "record", "logits_seed0", "logits_seed1"}
+        assert z["logits_seed0"].shape == (z["y_true"].size, 5)
+        assert (z["logits_seed1"].argmax(1) >= 0).all()

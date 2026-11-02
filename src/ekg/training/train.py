@@ -101,13 +101,15 @@ class BeatTorchDataset(Dataset):
 MAX_WEIGHT_RATIO = 50.0
 
 
-def class_weights(labels, n_classes: int = 5, max_ratio: float | None = MAX_WEIGHT_RATIO) -> torch.Tensor:
+def class_weights(labels, n_classes: int = 5, max_ratio: float | None = MAX_WEIGHT_RATIO,
+                  power: float = 1.0) -> torch.Tensor:
     """Capped inverse-frequency class weights, normalised to mean 1 over present classes.
 
-    ``v_c = min(1 / count_c, max_ratio / max_k count_k)`` for classes with support,
-    i.e. no class weighs more than ``max_ratio`` times the most frequent class;
-    ``w_c = v_c / mean_{k: count_k > 0}(v_k)``. Classes with zero support get ``0``.
-    ``max_ratio=None`` gives pure inverse frequency. Returns a float32 tensor of
+    ``v_c = min(count_c ** -power, max_ratio * (max_k count_k) ** -power)`` for classes
+    with support, i.e. no class weighs more than ``max_ratio`` times the most frequent
+    class; ``w_c = v_c / mean_{k: count_k > 0}(v_k)``. Classes with zero support get ``0``.
+    ``power=1`` is inverse frequency, ``power=0.5`` its square root (softer), ``0`` uniform.
+    ``max_ratio=None`` disables the cap. Returns a float32 tensor of
     length ``n_classes``. An empty label array yields all zeros.
     """
     y = np.asarray(labels, dtype=np.int64).reshape(-1)
@@ -119,9 +121,9 @@ def class_weights(labels, n_classes: int = 5, max_ratio: float | None = MAX_WEIG
     w = np.zeros(n_classes, dtype=np.float64)
     present = counts > 0
     if present.any():
-        inv = 1.0 / counts[present]
+        inv = counts[present] ** -float(power)
         if max_ratio is not None:
-            inv = np.minimum(inv, max_ratio / counts.max())
+            inv = np.minimum(inv, max_ratio * counts.max() ** -float(power))
         w[present] = inv / inv.mean()
     return torch.tensor(w, dtype=torch.float32)
 
@@ -204,6 +206,7 @@ def train_cnn(
     lr_schedule: str | None = None,
     augment: bool = False,
     on_epoch_model: Callable[[int, ECGNet1D], None] | None = None,
+    weight_power: float = 1.0,
 ) -> tuple[ECGNet1D, list[dict]]:
     """Train an :class:`ECGNet1D` with Adam and class-weighted cross-entropy.
 
@@ -238,6 +241,8 @@ def train_cnn(
         :func:`_augment`), drawn from a separate generator seeded with ``seed + 1``.
     on_epoch_model:
         Optional callback ``(epoch, model)`` after each epoch, e.g. to evaluate snapshots.
+    weight_power:
+        Exponent of the inverse-frequency class weights (see :func:`class_weights`).
 
     Returns
     -------
@@ -271,7 +276,7 @@ def train_cnn(
             raise ValueError("train and val beats have different window lengths")
 
     model = ECGNet1D(**kwargs).to(dev)
-    weight = class_weights(train.labels, n_classes).to(dev)
+    weight = class_weights(train.labels, n_classes, power=weight_power).to(dev)
     criterion = nn.CrossEntropyLoss(weight=weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)

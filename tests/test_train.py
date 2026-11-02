@@ -226,3 +226,12 @@ def test_cosine_schedule_and_epoch_model_callback():
     assert [e for e, _ in seen] == [1, 2, 3, 4]
     with pytest.raises(ValueError):
         train_cnn(data, None, epochs=1, lr_schedule="step")
+
+
+def test_class_weights_power():
+    y = np.array([0] * 400 + [1] * 100 + [2] * 25)
+    full = class_weights(y, 3, max_ratio=None).numpy()
+    soft = class_weights(y, 3, max_ratio=None, power=0.5).numpy()
+    np.testing.assert_allclose(soft[2] / soft[0], np.sqrt(full[2] / full[0]), rtol=1e-6)
+    np.testing.assert_allclose(class_weights(y, 3, power=0.0).numpy(), [1.0, 1.0, 1.0])
+    np.testing.assert_allclose(class_weights(y, 3, power=1.0).numpy(), class_weights(y, 3).numpy())
