@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import math
-import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -185,7 +185,7 @@ def test_prepare_refuses_partial_data(tmp_path, capsys):
     data = tmp_path / "mitdb"
     data.mkdir()
     for ext in ("hea", "dat", "atr"):
-        os.symlink(SAMPLE / f"100.{ext}", data / f"100.{ext}")
+        shutil.copyfile(SAMPLE / f"100.{ext}", data / f"100.{ext}")
     rc = pipeline.main(["prepare", "--data-dir", str(data), "--cache", str(tmp_path / "cache")])
     assert rc == 2
     assert "43 von 44" in capsys.readouterr().err
@@ -204,8 +204,8 @@ def _stand_in_records(data: Path, names: list[str]) -> None:
                 line = f"{name}.dat" + line[len("100.dat"):]
             lines.append(line)
         (data / f"{name}.hea").write_text("\n".join(lines) + "\n")
-        os.symlink(SAMPLE / "100.dat", data / f"{name}.dat")
-        os.symlink(SAMPLE / "100.atr", data / f"{name}.atr")
+        shutil.copyfile(SAMPLE / "100.dat", data / f"{name}.dat")
+        shutil.copyfile(SAMPLE / "100.atr", data / f"{name}.atr")
 
 
 def test_train_mechanics_on_stand_in_records(tmp_path):

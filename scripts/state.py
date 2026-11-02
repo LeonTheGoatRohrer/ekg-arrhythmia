@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import sys
@@ -23,7 +22,13 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+try:
+    import fcntl
+except ImportError:  # Windows: no fcntl, lock the first byte of the lock file instead
+    import msvcrt
+    fcntl = None
+
+ROOT =Path(__file__).resolve().parent.parent
 STATE = ROOT / "project_state.json"
 LOCK = ROOT / ".project_state.lock"
 
@@ -34,10 +39,29 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _lock(fh) -> None:
+    if fcntl:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+    else:
+        while True:
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)  # retries for ~10 s, then raises
+                return
+            except OSError:
+                continue
+
+
+def _unlock(fh) -> None:
+    if fcntl:
+        fcntl.flock(fh, fcntl.LOCK_UN)
+    else:
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+
+
 class _Locked:
     def __enter__(self):
         self.fh = open(LOCK, "w")
-        fcntl.flock(self.fh, fcntl.LOCK_EX)
+        _lock(self.fh)
         self.data = json.loads(STATE.read_text(encoding="utf-8"))
         return self.data
 
@@ -52,7 +76,7 @@ class _Locked:
             # (which may run as another user), like the pipeline's JSON exports.
             os.chmod(tmp, 0o644)
             os.replace(tmp, STATE)
-        fcntl.flock(self.fh, fcntl.LOCK_UN)
+        _unlock(self.fh)
         self.fh.close()
         return False
 

@@ -134,7 +134,10 @@ def test_resolve_data_file_unit(root: Path) -> None:
 
 def test_resolve_rejects_symlink_escape(root: Path) -> None:
     link = root / "web" / "public" / "data" / "dataset_stats.json"
-    link.symlink_to(root / "secret.json")
+    try:
+        link.symlink_to(root / "secret.json")
+    except OSError as e:  # Windows without Developer Mode / admin rights (WinError 1314)
+        pytest.skip(f"cannot create symlinks here: {e}")
     assert resolve_data_file("dataset_stats.json", root) is None
 
 

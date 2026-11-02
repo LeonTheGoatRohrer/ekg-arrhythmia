@@ -1,14 +1,658 @@
 {
   "schema_version": 1,
-  "status": "pending",
-  "reason": "Die vollständige MIT-BIH Arrhythmia Database (48 Records, davon 44 in DS1/DS2) ist nicht verfügbar: physionet.org ist in dieser Container-Umgebung durch die Netzwerk-Policy gesperrt. Ohne DS1 (Training) und DS2 (Test) werden keine Modell-Kennzahlen berechnet. Nachholen: physionet.org freischalten (oder lokal ausführen), dann `make data` (python scripts/download_mitdb.py --data-dir data/mitdb) und `make train` (python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data).",
-  "how_to": [
-    "make data   # python scripts/download_mitdb.py --data-dir data/mitdb",
-    "make train  # python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data"
-  ],
+  "status": "complete",
+  "generated_at": "2026-11-02T10:41:55+00:00",
   "dataset": "MIT-BIH Arrhythmia Database",
   "split": "DS1 → DS2 (de Chazal et al. 2004, inter-patient)",
-  "cnn": null,
-  "tree": null,
-  "generated_at": "2026-11-01T23:41:47+00:00"
+  "records": {
+    "train": [
+      "101",
+      "106",
+      "108",
+      "109",
+      "112",
+      "115",
+      "116",
+      "118",
+      "119",
+      "124",
+      "203",
+      "205",
+      "207",
+      "209",
+      "215",
+      "220",
+      "223",
+      "230"
+    ],
+    "val": [
+      "114",
+      "122",
+      "201",
+      "208"
+    ],
+    "test": [
+      "100",
+      "103",
+      "105",
+      "111",
+      "113",
+      "117",
+      "121",
+      "123",
+      "200",
+      "202",
+      "210",
+      "212",
+      "213",
+      "214",
+      "219",
+      "221",
+      "222",
+      "228",
+      "231",
+      "232",
+      "233",
+      "234"
+    ]
+  },
+  "beats": {
+    "train": 41732,
+    "val": 9270,
+    "test": 49692,
+    "tree_train": 51002
+  },
+  "per_split": {
+    "DS1": {
+      "N": 45848,
+      "S": 944,
+      "V": 3788,
+      "F": 414,
+      "Q": 8
+    },
+    "DS2": {
+      "N": 44240,
+      "S": 1837,
+      "V": 3220,
+      "F": 388,
+      "Q": 7
+    }
+  },
+  "config": {
+    "epochs": 20,
+    "patience": 5,
+    "lr": 0.001,
+    "batch_size": 256,
+    "seed": 0,
+    "max_depth": 4,
+    "use_reference_peaks": true,
+    "pre_ms": 250,
+    "post_ms": 450,
+    "validation": "record-wise hold-out inside DS1",
+    "preprocessing_fingerprint": "845810993c771619",
+    "library_versions": {
+      "python": "3.13.5",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "torch": "2.15.0",
+      "scikit-learn": "1.9.1",
+      "wfdb": "4.3.1"
+    }
+  },
+  "cnn": {
+    "summary": {
+      "accuracy": 0.9306125734524672,
+      "macro_f1": 0.44663317496977906,
+      "macro_f1_nsvf": 0.5582914687122238,
+      "per_class": {
+        "N": {
+          "sensitivity": 0.964624773960217,
+          "ppv": 0.967774854862119,
+          "specificity": 0.7393617021276596,
+          "f1": 0.9661972468755661,
+          "support": 44240,
+          "tp": 42675,
+          "fp": 1421,
+          "fn": 1565,
+          "tn": 4031
+        },
+        "S": {
+          "sensitivity": 0.5166031573217202,
+          "ppv": 0.38112449799196785,
+          "specificity": 0.9677985581443945,
+          "f1": 0.438641090825052,
+          "support": 1837,
+          "tp": 949,
+          "fp": 1541,
+          "fn": 888,
+          "tn": 46314
+        },
+        "V": {
+          "sensitivity": 0.8136645962732919,
+          "ppv": 0.8435286542176432,
+          "specificity": 0.9895420898605612,
+          "f1": 0.8283275371482769,
+          "support": 3220,
+          "tp": 2620,
+          "fp": 486,
+          "fn": 600,
+          "tn": 45986
+        },
+        "F": {
+          "sensitivity": 0.0,
+          "ppv": 0.0,
+          "specificity": 1.0,
+          "f1": 0.0,
+          "support": 388,
+          "tp": 0,
+          "fp": 0,
+          "fn": 388,
+          "tn": 49304
+        },
+        "Q": {
+          "sensitivity": 0.0,
+          "ppv": 0.0,
+          "specificity": 1.0,
+          "f1": 0.0,
+          "support": 7,
+          "tp": 0,
+          "fp": 0,
+          "fn": 7,
+          "tn": 49685
+        }
+      },
+      "confusion": [
+        [
+          42675,
+          1337,
+          228,
+          0,
+          0
+        ],
+        [
+          632,
+          949,
+          256,
+          0,
+          0
+        ],
+        [
+          398,
+          202,
+          2620,
+          0,
+          0
+        ],
+        [
+          385,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          6,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "class_names": [
+        "N",
+        "S",
+        "V",
+        "F",
+        "Q"
+      ],
+      "n": 49692
+    },
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.704250504485948,
+        "val_loss": 1.8222185481072741,
+        "val_macro_f1": 0.38138757702278697,
+        "val_accuracy": 0.9080906148867314,
+        "lr": 0.001,
+        "best": true
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.34637636578100955,
+        "val_loss": 2.1360689831497144,
+        "val_macro_f1": 0.3578387177542815,
+        "val_accuracy": 0.9064724919093851,
+        "lr": 0.001,
+        "best": false
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.28606923247515775,
+        "val_loss": 1.654264369136542,
+        "val_macro_f1": 0.39987930230674973,
+        "val_accuracy": 0.9141316073354908,
+        "lr": 0.001,
+        "best": true
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.2578216538718913,
+        "val_loss": 1.6537469774984157,
+        "val_macro_f1": 0.4144069279582041,
+        "val_accuracy": 0.9074433656957929,
+        "lr": 0.001,
+        "best": true
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.22410061925956185,
+        "val_loss": 1.5868233520456467,
+        "val_macro_f1": 0.38571543010271864,
+        "val_accuracy": 0.8641855447680691,
+        "lr": 0.001,
+        "best": false
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.2273677391246169,
+        "val_loss": 1.9548428371490538,
+        "val_macro_f1": 0.4030882384289115,
+        "val_accuracy": 0.9175836030204962,
+        "lr": 0.001,
+        "best": false
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.2074150385646209,
+        "val_loss": 1.7169214352737823,
+        "val_macro_f1": 0.3814731762226467,
+        "val_accuracy": 0.8700107874865156,
+        "lr": 0.001,
+        "best": false
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.18990859094705154,
+        "val_loss": 1.9861491425908846,
+        "val_macro_f1": 0.36909661696568835,
+        "val_accuracy": 0.8693635382955771,
+        "lr": 0.001,
+        "best": false
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.1838639318010332,
+        "val_loss": 1.6451660559824344,
+        "val_macro_f1": 0.38567886913490934,
+        "val_accuracy": 0.8505933117583603,
+        "lr": 0.001,
+        "best": false
+      }
+    ],
+    "gross_statistics": {
+      "gross": {
+        "N": {
+          "sensitivity": 0.964624773960217,
+          "ppv": 0.967774854862119,
+          "specificity": 0.7393617021276596,
+          "f1": 0.9661972468755661,
+          "support": 44240,
+          "tp": 42675,
+          "fp": 1421,
+          "fn": 1565,
+          "tn": 4031
+        },
+        "S": {
+          "sensitivity": 0.5166031573217202,
+          "ppv": 0.38112449799196785,
+          "specificity": 0.9677985581443945,
+          "f1": 0.438641090825052,
+          "support": 1837,
+          "tp": 949,
+          "fp": 1541,
+          "fn": 888,
+          "tn": 46314
+        },
+        "V": {
+          "sensitivity": 0.8136645962732919,
+          "ppv": 0.8440721649484536,
+          "specificity": 0.989584678287067,
+          "f1": 0.8285895003162556,
+          "support": 3220,
+          "tp": 2620,
+          "fp": 484,
+          "fn": 600,
+          "tn": 45986
+        },
+        "F": {
+          "sensitivity": 0.0,
+          "ppv": 0.0,
+          "specificity": 1.0,
+          "f1": 0.0,
+          "support": 388,
+          "tp": 0,
+          "fp": 0,
+          "fn": 388,
+          "tn": 49304
+        },
+        "Q": {
+          "sensitivity": 0.0,
+          "ppv": 0.0,
+          "specificity": 1.0,
+          "f1": 0.0,
+          "support": 7,
+          "tp": 0,
+          "fp": 0,
+          "fn": 7,
+          "tn": 49685
+        }
+      },
+      "average": {
+        "N": {
+          "sensitivity": 0.9657304824789299,
+          "n_records_sensitivity": 22,
+          "ppv": 0.959102675762074,
+          "n_records_ppv": 22,
+          "specificity": 0.8212144013778219,
+          "n_records_specificity": 21,
+          "f1": 0.9556309374415769,
+          "n_records_f1": 22
+        },
+        "S": {
+          "sensitivity": 0.5757431703353898,
+          "n_records_sensitivity": 16,
+          "ppv": 0.30095854833244884,
+          "n_records_ppv": 21,
+          "specificity": 0.9685721342519641,
+          "n_records_specificity": 22,
+          "f1": 0.35723088336734754,
+          "n_records_f1": 16
+        },
+        "V": {
+          "sensitivity": 0.876519508745716,
+          "n_records_sensitivity": 16,
+          "ppv": 0.7545280194902487,
+          "n_records_ppv": 18,
+          "specificity": 0.9888974753367699,
+          "n_records_specificity": 22,
+          "f1": 0.834342640077504,
+          "n_records_f1": 16
+        },
+        "F": {
+          "sensitivity": 0.0,
+          "n_records_sensitivity": 7,
+          "ppv": 0.0,
+          "n_records_ppv": 0,
+          "specificity": 1.0,
+          "n_records_specificity": 22,
+          "f1": 0.0,
+          "n_records_f1": 0
+        },
+        "Q": {
+          "sensitivity": 0.0,
+          "n_records_sensitivity": 2,
+          "ppv": 0.0,
+          "n_records_ppv": 0,
+          "specificity": 1.0,
+          "n_records_specificity": 22,
+          "f1": 0.0,
+          "n_records_f1": 0
+        }
+      },
+      "n_records": 22,
+      "conventions": [
+        "gross = counts pooled over all records; average = mean of per-record metrics over records where the metric's denominator is non-zero",
+        "zero denominators yield 0.0",
+        "VEB: true F beats classified as V are not counted as V false positives"
+      ]
+    },
+    "params": 14749,
+    "epochs_run": 9,
+    "best_epoch": 4
+  },
+  "tree": {
+    "summary": {
+      "accuracy": 0.5904370924897367,
+      "macro_f1": 0.285798959233118,
+      "macro_f1_nsvf": 0.3560722284531622,
+      "per_class": {
+        "N": {
+          "sensitivity": 0.6000678119349006,
+          "ppv": 0.9503812694662227,
+          "specificity": 0.7457813646368305,
+          "f1": 0.7356490654399845,
+          "support": 44240,
+          "tp": 26547,
+          "fp": 1386,
+          "fn": 17693,
+          "tn": 4066
+        },
+        "S": {
+          "sensitivity": 0.07131192161132281,
+          "ppv": 0.01942467378410439,
+          "specificity": 0.8618117229129663,
+          "f1": 0.030532571961309873,
+          "support": 1837,
+          "tp": 131,
+          "fp": 6613,
+          "fn": 1706,
+          "tn": 41242
+        },
+        "V": {
+          "sensitivity": 0.8236024844720496,
+          "ppv": 0.5459036640592837,
+          "specificity": 0.9525305560337407,
+          "f1": 0.6565981678633325,
+          "support": 3220,
+          "tp": 2652,
+          "fp": 2206,
+          "fn": 568,
+          "tn": 44266
+        },
+        "F": {
+          "sensitivity": 0.01804123711340206,
+          "ppv": 0.0007874901563730453,
+          "specificity": 0.8198523446373519,
+          "f1": 0.0015091085480219899,
+          "support": 388,
+          "tp": 7,
+          "fp": 8882,
+          "fn": 381,
+          "tn": 40422
+        },
+        "Q": {
+          "sensitivity": 0.42857142857142855,
+          "ppv": 0.002365930599369085,
+          "specificity": 0.9745395994767032,
+          "f1": 0.004705882352941177,
+          "support": 7,
+          "tp": 3,
+          "fp": 1265,
+          "fn": 4,
+          "tn": 48420
+        }
+      },
+      "confusion": [
+        [
+          26547,
+          5922,
+          1974,
+          8661,
+          1136
+        ],
+        [
+          1371,
+          131,
+          206,
+          124,
+          5
+        ],
+        [
+          11,
+          341,
+          2652,
+          95,
+          121
+        ],
+        [
+          4,
+          349,
+          25,
+          7,
+          3
+        ],
+        [
+          0,
+          1,
+          1,
+          2,
+          3
+        ]
+      ],
+      "class_names": [
+        "N",
+        "S",
+        "V",
+        "F",
+        "Q"
+      ],
+      "n": 49692
+    },
+    "gross_statistics": {
+      "gross": {
+        "N": {
+          "sensitivity": 0.6000678119349006,
+          "ppv": 0.9503812694662227,
+          "specificity": 0.7457813646368305,
+          "f1": 0.7356490654399845,
+          "support": 44240,
+          "tp": 26547,
+          "fp": 1386,
+          "fn": 17693,
+          "tn": 4066
+        },
+        "S": {
+          "sensitivity": 0.07131192161132281,
+          "ppv": 0.01942467378410439,
+          "specificity": 0.8618117229129663,
+          "f1": 0.030532571961309873,
+          "support": 1837,
+          "tp": 131,
+          "fp": 6613,
+          "fn": 1706,
+          "tn": 41242
+        },
+        "V": {
+          "sensitivity": 0.8236024844720496,
+          "ppv": 0.5487274984481688,
+          "specificity": 0.9530432536008784,
+          "f1": 0.6586365329690799,
+          "support": 3220,
+          "tp": 2652,
+          "fp": 2181,
+          "fn": 568,
+          "tn": 44266
+        },
+        "F": {
+          "sensitivity": 0.01804123711340206,
+          "ppv": 0.0007874901563730453,
+          "specificity": 0.8198523446373519,
+          "f1": 0.0015091085480219899,
+          "support": 388,
+          "tp": 7,
+          "fp": 8882,
+          "fn": 381,
+          "tn": 40422
+        },
+        "Q": {
+          "sensitivity": 0.42857142857142855,
+          "ppv": 0.002365930599369085,
+          "specificity": 0.9745395994767032,
+          "f1": 0.004705882352941177,
+          "support": 7,
+          "tp": 3,
+          "fp": 1265,
+          "fn": 4,
+          "tn": 48420
+        }
+      },
+      "average": {
+        "N": {
+          "sensitivity": 0.635986650373021,
+          "n_records_sensitivity": 22,
+          "ppv": 0.9635981676485706,
+          "n_records_ppv": 22,
+          "specificity": 0.8568426173804914,
+          "n_records_specificity": 21,
+          "f1": 0.6841833402608097,
+          "n_records_f1": 22
+        },
+        "S": {
+          "sensitivity": 0.24440057270527984,
+          "n_records_sensitivity": 16,
+          "ppv": 0.19192448599065332,
+          "n_records_ppv": 21,
+          "specificity": 0.8888763251316739,
+          "n_records_specificity": 22,
+          "f1": 0.1689521081748029,
+          "n_records_f1": 15
+        },
+        "V": {
+          "sensitivity": 0.7730781125312894,
+          "n_records_sensitivity": 16,
+          "ppv": 0.4035453332299005,
+          "n_records_ppv": 20,
+          "specificity": 0.9548615674036232,
+          "n_records_specificity": 22,
+          "f1": 0.4838676360765068,
+          "n_records_f1": 16
+        },
+        "F": {
+          "sensitivity": 0.17040970079644113,
+          "n_records_sensitivity": 7,
+          "ppv": 0.006536275063710569,
+          "n_records_ppv": 17,
+          "specificity": 0.8358836486866497,
+          "n_records_specificity": 22,
+          "f1": 0.0037204185690442927,
+          "n_records_f1": 7
+        },
+        "Q": {
+          "sensitivity": 0.3,
+          "n_records_sensitivity": 2,
+          "ppv": 0.0024390243902439024,
+          "n_records_ppv": 15,
+          "specificity": 0.9652504157714084,
+          "n_records_specificity": 22,
+          "f1": 0.034482758620689655,
+          "n_records_f1": 2
+        }
+      },
+      "n_records": 22,
+      "conventions": [
+        "gross = counts pooled over all records; average = mean of per-record metrics over records where the metric's denominator is non-zero",
+        "zero denominators yield 0.0",
+        "VEB: true F beats classified as V are not counted as V false positives"
+      ]
+    },
+    "max_depth": 4,
+    "depth": 4,
+    "n_leaves": 16,
+    "features": [
+      "qrs_width_ms",
+      "r_amplitude",
+      "q_depth",
+      "s_depth",
+      "qrs_area",
+      "t_amplitude",
+      "beat_energy",
+      "pre_rr",
+      "post_rr",
+      "local_rr",
+      "rr_ratio"
+    ],
+    "trained_on_beats": 51002
+  },
+  "train_seconds": 97.63
 }

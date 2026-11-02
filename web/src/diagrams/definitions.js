@@ -219,7 +219,7 @@ export const DIAGRAMS = {
       'Der Mother-Agent liest vor jeder Welle project_state.json und startet nur Module, deren Abhängigkeiten erfüllt ' +
       'sind (max. 16 Agents parallel). In Welle 1 arbeiten 13 Agents gleichzeitig an disjunkten Dateien; jeder meldet ' +
       'über das State-Protokoll start, done oder fail. Fehlgeschlagene Module werden mit korrigierter Anweisung neu ' +
-      'gestartet, ohne die übrigen zu blockieren. Das Volltraining bleibt blockiert, solange physionet.org gesperrt ist.',
+      'gestartet, ohne die übrigen zu blockieren. Das Volltraining war blockiert, solange physionet.org gesperrt war, und wurde lokal nachgeholt.',
     source: `flowchart TD
   state[("project_state.json<br/>zentrale Status-Datei")]:::data
   mother(["Mother-Agent<br/>Orchestrator · max. 16 parallel"]):::result
@@ -231,7 +231,7 @@ export const DIAGRAMS = {
   proto["State-Protokoll je Agent (scripts/state.py)<br/>start → in_progress · done: Summary, Entscheidungen, Dateien, Tests<br/>fail: Log-Auszug → Mother-Agent korrigiert und startet neu"]:::note
   w2["Welle 2 · Integration<br/>Pipeline → UI-Integration"]:::model
   w3["Welle 3 · Review / Fix<br/>Reviewer → Fix-Agent → Re-Test"]:::model
-  w4["Welle 4 · Volltraining DS1 → DS2<br/>blockiert: physionet.org gesperrt"]:::muted
+  w4["Welle 4 · Volltraining DS1 → DS2<br/>lokal nachgeholt"]:::model
   state -->|liest vor jeder Welle| mother
   mother --> b1
   mother --> b2

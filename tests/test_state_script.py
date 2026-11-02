@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
 import sys
 from pathlib import Path
@@ -84,7 +85,8 @@ def test_written_file_is_valid_json_and_world_readable(state):
     mod, path = state
     mod.main(["start", "alpha", "--agent", "a"])
     json.loads(path.read_text(encoding="utf-8"))
-    assert stat.S_IMODE(path.stat().st_mode) == 0o644   # mkstemp would leave 0600
+    expected = 0o644 if os.name == "posix" else 0o666   # Windows only models the read-only flag
+    assert stat.S_IMODE(path.stat().st_mode) == expected   # mkstemp would leave 0600
     assert not list(path.parent.glob(".state-*.json"))  # no temp files left behind
 
 

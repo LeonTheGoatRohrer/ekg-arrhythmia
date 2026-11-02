@@ -39,13 +39,13 @@ export const STEPS = [
 <p>Die <strong>MIT-BIH Arrhythmia Database</strong> (Moody &amp; Mark, 2001) enthält <strong>48 halbstündige Ausschnitte</strong> aus ambulanten Zwei-Kanal-Langzeit-EKGs von <strong>47 Probanden</strong> (zwei Aufnahmen, 201 und 202, stammen von derselben Person), aufgezeichnet im Arrhythmie-Labor des Beth Israel Hospital in Boston. 23 Aufnahmen (Serie 100) wurden zufällig aus einem großen Holter-Bestand gezogen, 25 weitere (Serie 200) gezielt wegen seltener, aber klinisch bedeutsamer Rhythmusstörungen ausgewählt.</p>
 <p>Technisch liegt jede Aufnahme mit <strong>360 Hz</strong> Abtastrate und <strong>11 bit</strong> Auflösung über einen Messbereich von 10 mV vor, mit <strong>2 Ableitungen</strong>: meist eine modifizierte Extremitätenableitung II (<code>MLII</code>) und eine Brustwandableitung (meist V1, gelegentlich V2, V4 oder V5). Mindestens zwei Kardiologen haben jeden Schlag unabhängig annotiert; Abweichungen wurden im Konsens aufgelöst. Die Annotationen stehen als Symbole (z.&nbsp;B. <code>N</code>, <code>A</code>, <code>V</code>) mit Sample-Position in der <code>.atr</code>-Datei.</p>
 <p>Das Projekt verwendet ausschließlich die Ableitung <code>MLII</code> (Fallback: Kanal 0, falls MLII fehlt). Der Loader liest Header (<code>.hea</code>), Signal (<code>.dat</code>) und Annotationen (<code>.atr</code>) mit <code>wfdb</code> und liefert ein <code>Record</code>-Objekt mit Signal in mV, Abtastrate und allen Annotationen.</p>
-<p><strong>Ehrlicher Hinweis zur Datenlage:</strong> In der Umgebung, in der dieses Projekt gebaut wurde, ist <code>physionet.org</code> gesperrt. Vorhanden ist nur der <em>echte</em> Record&nbsp;100 (Ableitungen <code>MLII</code> und <code>V5</code>, 2239 Normalschläge, 33 atriale Extrasystolen, 1 ventrikuläre Extrasystole). Alle Signal-Visualisierungen dieser Seite stammen aus diesem Record. Das Volltraining auf allen Aufnahmen steht aus; bis dahin werden <em>keine</em> Modellergebnisse angezeigt.</p>
+<p><strong>Ehrlicher Hinweis zur Datenlage:</strong> In der Umgebung, in der dieses Projekt gebaut wurde, war <code>physionet.org</code> gesperrt; dort lag nur der <em>echte</em> Record&nbsp;100 vor (Ableitungen <code>MLII</code> und <code>V5</code>, 2239 Normalschläge, 33 atriale Extrasystolen, 1 ventrikuläre Extrasystole). Alle Signal-Visualisierungen dieser Seite stammen aus diesem Record (DS2, nie im Training). Das Volltraining wurde anschließend lokal auf allen 48 Aufnahmen nachgeholt; sämtliche Modellergebnisse stammen aus diesem Lauf.</p>
 <p>Quelle: <a href="https://physionet.org/content/mitdb/">PhysioNet – MIT-BIH Arrhythmia Database</a>.</p>`,
     bullets: [
       '48 Aufnahmen à ca. 30 min, 47 Probanden',
       '360 Hz, 11 bit, 2 Ableitungen (genutzt: <code>MLII</code>)',
       'Schlag-für-Schlag-Annotationen durch Kardiologen',
-      'Hier verfügbar: nur echter Record 100 – Volltraining ausstehend',
+      'Signal-Demos aus echtem Record 100 – Volltraining auf allen 48 Records',
     ],
     codeRef: 'src/ekg/data/loader.py',
   },
@@ -67,7 +67,7 @@ export const STEPS = [
 </ul>
 <p><strong>Klassenungleichgewicht:</strong> In den nicht schrittmacherstimulierten Aufnahmen gehören rund 90&nbsp;% aller Schläge zur Klasse N; F und Q sind sehr selten. Ein Modell, das stur „N“ vorhersagt, erreicht deshalb eine hohe Accuracy – und ist klinisch wertlos. Das muss beim Training (Klassengewichte) und bei der Bewertung (Metriken je Klasse) berücksichtigt werden.</p>
 <p><strong>Warum S und V im Fokus stehen:</strong> Gehäufte supraventrikuläre Extrasystolen können Vorhofflimmern vorausgehen; ventrikuläre Extrasystolen – vor allem häufig, gekoppelt oder in Salven – sind ein Hinweis auf strukturelle Herzerkrankungen und ein Risikomarker für gefährliche Kammerrhythmusstörungen. Gerade diese Klassen sind selten und daher für Algorithmen schwer.</p>
-<p>Die Panel-Ansicht zeigt die Klassenverteilung je Split, sobald die vollständige Datenbank verarbeitet wurde.</p>`,
+<p>Die Panel-Ansicht zeigt die Klassenverteilung je Split (DS1 und DS2) aus der vollständigen Datenbank.</p>`,
     bullets: [
       'Mapping im Code: <code>AAMI_MAP</code>, Klassen-Index = Reihenfolge in <code>CLASSES</code>',
       'Nicht-Schlag-Annotationen (z.&nbsp;B. <code>+</code>) werden verworfen',
@@ -267,7 +267,7 @@ export const STEPS = [
 <p><strong>Optimierung:</strong> Der <strong>Adam</strong>-Optimierer passt die Lernrate je Parameter adaptiv an; trainiert wird in Mini-Batches über mehrere Epochen mit festem Zufalls-Seed für Reproduzierbarkeit.</p>
 <p><strong>Validierung nur auf DS1:</strong> Für Modellauswahl und Early Stopping wird ein Hold-out-Teil <em>aus DS1</em> verwendet. DS2 wird weder für die Wahl von Hyperparametern noch für den Stopp-Zeitpunkt herangezogen – sonst würde Testinformation ins Modell „durchsickern“ und das Ergebnis geschönt.</p>
 <p><strong>Early Stopping:</strong> Nach jeder Epoche werden Validierungs-Loss und Macro-F1 protokolliert. Verbessert sich die Validierung nicht mehr, wird das Training beendet und der beste Zustand behalten – das begrenzt Überanpassung an die Trainingspatienten.</p>
-<p><strong>Aktueller Stand:</strong> Ein Training auf dem vollständigen DS1 war in dieser Umgebung noch nicht möglich (siehe Datenlage). Die Trainingskurve erscheint, sobald <code>metrics.json</code> aus einem echten Lauf vorliegt.</p>`,
+<p><strong>Aktueller Stand:</strong> Das Training auf dem vollständigen DS1 wurde lokal ausgeführt; die Kurve zeigt den echten Verlauf aus <code>metrics.json</code>. Achtung: Der zufällig gezogene Validierungs-Record 208 enthält rund 90&nbsp;% aller F-Schläge von DS1 – dem CNN blieben dadurch kaum F-Beispiele zum Lernen.</p>`,
     bullets: [
       'Klassengewichte invers zur Häufigkeit',
       'Adam-Optimierer, Mini-Batches, fester Seed',
