@@ -83,6 +83,7 @@ Weitere Kommandos:
 | `make data` | Lädt die vollständige MIT-BIH-DB nach `data/mitdb` (braucht physionet.org). |
 | `make prepare` | Baut die Beat-Datensätze für DS1/DS2 als npz-Cache (`artifacts/beats`). |
 | `make train EPOCHS=20` | Trainiert das CNN auf DS1, validiert auf 4 DS1-Records (record-weiser Hold-out), trainiert den Baum auf ganz DS1 und evaluiert beides auf DS2. Schreibt `metrics.json` (`status: "complete"`), `tree.json`, `dataset_stats.json` nach `web/public/data` und `artifacts/web` (Fallback der API) sowie `artifacts/model.pt`. |
+| `make cv FEATURES=patient` | Record-gruppierte 5-fach-Kreuzvalidierung des CNN **nur auf DS1** (DS2 wird nie geladen), 3 Seeds, Mittelwert ± Standardabweichung. Zum Vergleich von Merkmalssätzen, ohne den Test-Split anzufassen. Schreibt `artifacts/cv/cv_<FEATURES>.json`. |
 | `make state` | Kopiert `project_state.json` nach `web/public/data`. |
 
 `prepare` und `train` brechen mit Exit-Code 2 und einer Liste der fehlenden Records ab, solange

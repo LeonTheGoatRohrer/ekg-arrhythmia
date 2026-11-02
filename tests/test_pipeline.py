@@ -251,6 +251,75 @@ def test_select_validation_records():
         pipeline.select_validation_records(labels, n_val=10)
 
 
+def test_select_validation_records_respects_max_class_share():
+    labels = {f"r{i}": np.array([0] * 40 + [1, 2]) for i in range(8)}
+    labels["dom"] = np.array([0] * 40 + [1, 2] + [3] * 30)  # holds 30 of 31 F beats
+    labels["r0"] = np.array([0] * 40 + [1, 2, 3])
+    for seed in range(20):
+        val = pipeline.select_validation_records(labels, n_val=3, seed=seed, max_class_share=0.4)
+        assert "dom" not in val
+    with pytest.raises(ValueError):
+        pipeline.select_validation_records(labels, n_val=3, max_class_share=0.01)
+
+
+def test_cv_folds_disjoint_cover_and_spread_rare():
+    labels = {f"r{i:02d}": np.zeros(30, dtype=np.int64) for i in range(12)}
+    labels["f_heavy"] = np.array([0] * 30 + [3] * 50)
+    labels["s_heavy"] = np.array([0] * 30 + [1] * 50)
+    folds = pipeline.cv_folds(labels, k=5)
+    flat = [r for f in folds for r in f]
+    assert sorted(flat) == sorted(labels) and len(flat) == len(set(flat))
+    assert all(len(f) in (2, 3) for f in folds)
+    fold_of = {r: i for i, f in enumerate(folds) for r in f}
+    assert fold_of["f_heavy"] != fold_of["s_heavy"]
+    assert folds == pipeline.cv_folds(labels, k=5)
+    with pytest.raises(ValueError):
+        pipeline.cv_folds(labels, k=1)
+
+
+def test_with_features_adds_columns():
+    bs, _ = pipeline.load_or_build_beats("100", SAMPLE, None)
+    assert pipeline.with_features(bs, "base") is bs
+    assert pipeline.with_features(bs, "rr").rr.shape == (len(bs), 7)
+    p = pipeline.with_features(bs, "patient")
+    assert p.rr.shape == (len(bs), 10)
+    np.testing.assert_array_equal(p.rr[:, :4], bs.rr)
+    np.testing.assert_array_equal(p.beats, bs.beats)
+    with pytest.raises(ValueError):
+        pipeline.with_features(bs, "nope")
+
+
+def test_cv_mechanics_never_loads_ds2(tmp_path, monkeypatch):
+    names = ["901", "902", "903", "904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, names)
+    loaded = []
+    real = pipeline.load_or_build_beats
+    monkeypatch.setattr(pipeline, "load_or_build_beats",
+                        lambda name, *a, **k: (loaded.append(name), real(name, *a, **k))[1])
+    rep = pipeline.run_cv(data, tmp_path / "cv", cache_dir=tmp_path / "beats", features="patient", k=2,
+                          seeds=[0], epochs=1, patience=None, n_val=1, max_class_share=None, ds1=names)
+    assert sorted(loaded) == names
+    assert (tmp_path / "cv" / "cv_patient.json").exists()
+    assert sorted(r for f in rep["folds"] for r in f) == names
+    run = rep["runs"][0]
+    assert run["summary"]["n"] == sum(len(real(n, data, tmp_path / "beats")[0]) for n in names)
+    for f in run["folds"]:
+        assert not set(f["val"]) & set(f["test"])
+    assert set(rep["aggregate"]["macro_f1_nsvf"]) == {"mean", "std"}
+
+
+def test_train_records_feature_set(tmp_path):
+    ds1, ds2 = ["901", "902", "903"], ["904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, ds1 + ds2)
+    m = pipeline.run_train(data, tmp_path / "art", None, epochs=1, patience=None, n_val=1, ds1=ds1, ds2=ds2,
+                           features="patient")
+    assert m["config"]["features"] == "patient"
+    from ekg.training.train import load_model
+    assert load_model(tmp_path / "art" / "model.pt").n_rr == 10
+
+
 def test_beat_cache_invalidated_by_preprocessing_code_change(tmp_path, monkeypatch):
     cache = tmp_path / "beats"
     bs, hit = pipeline.load_or_build_beats("100", SAMPLE, cache)

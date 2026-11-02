@@ -11,10 +11,12 @@ PORT     ?= 8000
 # e.g. PIP_EXTRA='--extra-index-url https://download.pytorch.org/whl/cpu' for the CPU-only torch wheel
 PIP_EXTRA ?=
 
-.PHONY: help install data demo smoke prepare train test web serve state all
+FEATURES ?= base
+
+.PHONY: help install data demo smoke prepare train cv test web serve state all
 
 help:
-	@echo "make install | data | demo | smoke | prepare | train [EPOCHS=N] | test | web | serve | state | all"
+	@echo "make install | data | demo | smoke | prepare | train [EPOCHS=N] | cv [FEATURES=base|rr|patient] | test | web | serve | state | all"
 
 install:            ## Python-venv + Paket (editable, Versionen aus constraints.txt) + Web-Abhängigkeiten
 	test -x $(PY) || python3 -m venv .venv
@@ -37,7 +39,10 @@ train:              ## CNN + Baum auf DS1, Evaluation auf DS2 -> metrics.json, t
 	$(PY) -m ekg.pipeline train --data-dir $(DATA_DIR) --out artifacts --export $(WEB_DATA) --epochs $(EPOCHS)
 	$(PY) -m ekg.pipeline export-state --out $(WEB_DATA)
 
-test:               ## gesamte Python-Testsuite
+cv:                 ## Record-gruppierte Kreuzvalidierung des CNN nur auf DS1 -> artifacts/cv/cv_<FEATURES>.json
+	$(PY) -m ekg.pipeline cv --data-dir $(DATA_DIR) --features $(FEATURES)
+
+test:              ## gesamte Python-Testsuite
 	$(PYTEST) -q
 
 web:                ## UI bauen (web/dist)

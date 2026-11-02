@@ -5,6 +5,7 @@ Usage (run from the repository root)::
     python -m ekg.pipeline demo    --record data/sample/100 --out web/public/data
     python -m ekg.pipeline prepare --data-dir data/mitdb --cache artifacts/beats
     python -m ekg.pipeline train   --data-dir data/mitdb --out artifacts --export web/public/data [--epochs N]
+    python -m ekg.pipeline cv      --data-dir data/mitdb --features patient
     python -m ekg.pipeline smoke
     python -m ekg.pipeline export-state --out web/public/data
 
@@ -27,6 +28,10 @@ Commands
     ``dataset_stats.json`` (to ``<out>/web/``, which the API serves as fallback
     for ``artifacts/web``, and to ``--export``) and ``<out>/model.pt``.
     Requires the complete DS1 + DS2.
+``cv``
+    Record-grouped k-fold cross-validation of the CNN on DS1 ONLY (DS2 is never
+    loaded), repeated over several seeds. Used to compare feature sets without
+    touching the test split. Writes ``<out>/cv_<features>.json``.
 ``smoke``
     Mechanics check of prepare/train/evaluate/export on record 100 only, with
     one epoch. Writes ONLY to ``artifacts/smoke/`` (never to ``web/``) and every
@@ -40,6 +45,7 @@ Exit codes: 0 = ok, 1 = usage / unexpected error, 2 = data unavailable.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
@@ -63,6 +69,7 @@ from ekg.data.loader import (
     load_record,
 )
 from ekg.preprocessing.filters import frequency_response, preprocess
+from ekg.preprocessing.patient_features import patient_relative_features
 from ekg.preprocessing.rpeaks import detect_r_peaks, match_peaks, pan_tompkins_stages
 from ekg.preprocessing.segmentation import (
     POST_MS,
@@ -87,10 +94,14 @@ __all__ = [
     "load_or_build_beats",
     "prepare_splits",
     "select_validation_records",
+    "FEATURE_SETS",
+    "with_features",
+    "cv_folds",
     "fit_and_evaluate",
     "run_demo",
     "run_prepare",
     "run_train",
+    "run_cv",
     "run_smoke",
     "export_state",
     "main",
@@ -622,12 +633,14 @@ def run_prepare(data_dir: str | Path, cache_dir: str | Path, *, use_reference_pe
 
 def select_validation_records(labels_by_record: dict[str, np.ndarray], n_val: int = DEFAULT_VAL_RECORDS,
                               seed: int = 0, required: Sequence[str] = ("N", "S", "V"),
-                              max_tries: int = 5000) -> list[str]:
+                              max_tries: int = 5000, max_class_share: float | None = None) -> list[str]:
     """Record-wise validation hold-out inside the training split.
 
     Draws (seeded) record subsets of size ``n_val`` until the validation part
     contains every ``required`` class present in the split and the remaining
     training part still contains every class present in the split.
+    With ``max_class_share``, records holding at least that share of any class of
+    the split (e.g. 208 with ~90 % of all DS1 F beats) are never drawn.
     """
     names = sorted(labels_by_record)
     if not 0 < n_val < len(names):
@@ -637,10 +650,15 @@ def select_validation_records(labels_by_record: dict[str, np.ndarray], n_val: in
     total = sum(counts.values())
     present = {i for i in range(len(CLASSES)) if total[i] > 0}
     need_val = {CLASSES.index(c) for c in required} & present
+    pool = names
+    if max_class_share is not None:
+        pool = [r for r in names if all(counts[r][i] < max_class_share * total[i] for i in present)]
+        if len(pool) < n_val:
+            raise ValueError(f"only {len(pool)} records below max_class_share={max_class_share}, need {n_val}")
     rng = np.random.default_rng(seed)
     first: list[str] | None = None
     for _ in range(max_tries):
-        val = sorted(rng.choice(names, size=n_val, replace=False).tolist())
+        val = sorted(rng.choice(pool, size=n_val, replace=False).tolist())
         first = first or val
         v = sum(counts[r] for r in val)
         t = total - v
@@ -648,6 +666,44 @@ def select_validation_records(labels_by_record: dict[str, np.ndarray], n_val: in
             return val
     _log("WARNUNG: keine Validierungsauswahl erfüllt die Klassen-Bedingungen – nehme erste Ziehung.")
     return first or names[:n_val]
+
+
+# CNN input variants: "base" = 4 RR features; "rr" adds the 3 RR intervals normalised by the
+# record mean; "patient" additionally adds 3 morphology deviations from the record's median beat.
+FEATURE_SETS = ("base", "rr", "patient")
+
+
+def with_features(bs: BeatSet, features: str = "base", fs: int = 360) -> BeatSet:
+    """BeatSet whose ``rr`` carries the extra CNN inputs of ``features`` (see FEATURE_SETS)."""
+    if features not in FEATURE_SETS:
+        raise ValueError(f"unknown feature set {features!r}, expected one of {FEATURE_SETS}")
+    if features == "base" or len(bs) == 0:
+        return bs
+    extra = patient_relative_features(bs.beats, bs.rr, bs.record, fs)
+    if features == "rr":
+        extra = extra[:, :3]
+    return dataclasses.replace(bs, rr=np.concatenate([bs.rr, extra], axis=1))
+
+
+def cv_folds(labels_by_record: dict[str, np.ndarray], k: int = 5) -> list[list[str]]:
+    """Deterministic record-grouped folds that spread the rare classes.
+
+    Records are ranked by their summed share of the S, V and F beats of the split
+    and dealt to the folds in snake order (0..k-1, k-1..0, ...).
+    """
+    names = sorted(labels_by_record)
+    if not 1 < k <= len(names):
+        raise ValueError(f"k must be in [2, {len(names)}], got {k}")
+    counts = {r: np.bincount(np.asarray(labels_by_record[r], dtype=np.int64), minlength=len(CLASSES))
+              for r in names}
+    total = np.maximum(sum(counts.values()), 1)
+    rare = [CLASSES.index(c) for c in ("S", "V", "F")]
+    ranked = sorted(names, key=lambda r: (-sum(counts[r][i] / total[i] for i in rare), r))
+    folds: list[list[str]] = [[] for _ in range(k)]
+    for i, r in enumerate(ranked):
+        lap, pos = divmod(i, k)
+        folds[pos if lap % 2 == 0 else k - 1 - pos].append(r)
+    return [sorted(f) for f in folds]
 
 
 def _per_record_cms(y_true: np.ndarray, y_pred: np.ndarray, records: np.ndarray) -> dict[str, np.ndarray]:
@@ -662,8 +718,12 @@ def _per_record_cms(y_true: np.ndarray, y_pred: np.ndarray, records: np.ndarray)
 
 def fit_and_evaluate(train: BeatSet, val: BeatSet | None, test: BeatSet, *, tree_train: BeatSet,
                      epochs: int = 20, patience: int | None = 5, lr: float = 1e-3, batch_size: int = 256,
-                     seed: int = 0, max_depth: int = 4, fs: int = 360) -> dict:
-    """Shared core of ``train`` and ``smoke``: CNN + tree fit, evaluation on ``test``."""
+                     seed: int = 0, max_depth: int = 4, fs: int = 360, features: str = "base") -> dict:
+    """Shared core of ``train`` and ``smoke``: CNN + tree fit, evaluation on ``test``.
+
+    ``features`` selects the CNN inputs (FEATURE_SETS); the tree always uses its own
+    interpretable features.
+    """
     from ekg.evaluation.metrics import gross_statistics, summary
     from ekg.models.cnn1d import count_parameters
     from ekg.models.tree_baseline import export_tree, extract_features, train_tree
@@ -676,9 +736,11 @@ def fit_and_evaluate(train: BeatSet, val: BeatSet | None, test: BeatSet, *, tree
         _log(f"Epoche {e['epoch']}: train_loss={e['train_loss']:.4f}"
              + (f" val_macro_f1={vf:.4f}" if vf is not None else ""))
 
-    model, history = train_cnn(train, val, epochs=epochs, lr=lr, batch_size=batch_size, seed=seed,
+    model, history = train_cnn(with_features(train, features, fs),
+                               with_features(val, features, fs) if val is not None else None,
+                               epochs=epochs, lr=lr, batch_size=batch_size, seed=seed,
                                patience=patience if val is not None else None, on_epoch=on_epoch)
-    y_cnn = predict(model, test)
+    y_cnn = predict(model, with_features(test, features, fs))
     cnn_summary = summary(test.labels, y_cnn, CLASSES)
     cnn_gross = gross_statistics(_per_record_cms(test.labels, y_cnn, np.asarray(test.record)), CLASSES)
 
@@ -720,7 +782,7 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
               lr: float = 1e-3, batch_size: int = 256, seed: int = 0, n_val: int = DEFAULT_VAL_RECORDS,
               val_records: Sequence[str] | None = None, max_depth: int = 4,
               use_reference_peaks: bool = True, ds1: Sequence[str] = DS1,
-              ds2: Sequence[str] = DS2) -> dict:
+              ds2: Sequence[str] = DS2, features: str = "base") -> dict:
     """Full inter-patient training DS1 -> DS2. Raises DataIncompleteError without the data."""
     from ekg.training.train import save_model
 
@@ -747,7 +809,7 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
          f"({', '.join(val_names)}), Test DS2: {len(test)} Beats")
 
     res = fit_and_evaluate(train, val, test, tree_train=full_ds1, epochs=epochs, patience=patience, lr=lr,
-                           batch_size=batch_size, seed=seed, max_depth=max_depth)
+                           batch_size=batch_size, seed=seed, max_depth=max_depth, features=features)
 
     per_split = {"DS1": _split_counts(ds1_sets), "DS2": _split_counts(ds2_sets)}
     metrics = {
@@ -760,7 +822,7 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
         "beats": {"train": len(train), "val": len(val), "test": len(test), "tree_train": len(full_ds1)},
         "per_split": per_split,
         "config": {"epochs": epochs, "patience": patience, "lr": lr, "batch_size": batch_size, "seed": seed,
-                   "max_depth": max_depth, "use_reference_peaks": use_reference_peaks,
+                   "max_depth": max_depth, "use_reference_peaks": use_reference_peaks, "features": features,
                    "pre_ms": PRE_MS, "post_ms": POST_MS, "validation": "record-wise hold-out inside DS1",
                    "preprocessing_fingerprint": preprocessing_fingerprint(),
                    "library_versions": library_versions()},
@@ -788,6 +850,77 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
     _log(f"Fertig: CNN macro-F1 (DS2) = {s['macro_f1']:.4f}, Baum macro-F1 (DS2) = "
          f"{metrics['tree']['summary']['macro_f1']:.4f}; Modell: {out_dir / 'model.pt'}")
     return metrics
+
+
+def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path | None = None,
+           features: str = "base", k: int = 5, seeds: Sequence[int] = (0, 1, 2), epochs: int = 20,
+           patience: int | None = 5, lr: float = 1e-3, batch_size: int = 256, n_val: int = 3,
+           max_class_share: float | None = 0.4, use_reference_peaks: bool = True,
+           ds1: Sequence[str] = DS1) -> dict:
+    """Record-grouped k-fold CV of the CNN on DS1 only (DS2 is never loaded).
+
+    Per seed, the out-of-fold predictions of all folds are pooled into one summary;
+    the report gives mean and standard deviation of these summaries over the seeds.
+    Early stopping inside a fold uses ``n_val`` training records (``max_class_share``
+    keeps records that dominate a class in training).
+    """
+    from ekg.evaluation.metrics import summary
+    from ekg.training.train import predict, train_cnn
+
+    with_features(BeatSet.empty(), features)  # validate the name before the expensive part
+    sets = prepare_splits(data_dir, cache_dir, use_reference_peaks=use_reference_peaks, ds1=ds1, ds2=())["DS1"]
+    labels = {r: bs.labels for r, bs in sets.items()}
+    folds = cv_folds(labels, k)
+    runs = []
+    for seed in seeds:
+        y_true, y_pred, fold_info = [], [], []
+        for i, test_names in enumerate(folds):
+            rest = {r: labels[r] for r in sorted(sets) if r not in test_names}
+            val_names = select_validation_records(rest, n_val, seed, max_class_share=max_class_share)
+            train = BeatSet.concat([sets[r] for r in rest if r not in val_names])
+            val = BeatSet.concat([sets[r] for r in val_names])
+            test = BeatSet.concat([sets[r] for r in test_names])
+            model, history = train_cnn(with_features(train, features), with_features(val, features), epochs=epochs,
+                                       lr=lr, batch_size=batch_size, seed=seed, patience=patience)
+            pred = predict(model, with_features(test, features))
+            y_true.append(test.labels)
+            y_pred.append(pred)
+            best = [h["epoch"] for h in history if h.get("best")]
+            fold_s = summary(test.labels, pred, CLASSES)
+            fold_info.append({"fold": i, "test": test_names, "val": val_names, "best_epoch": best[-1] if best else None,
+                              "macro_f1_nsvf": fold_s["macro_f1_nsvf"]})
+            _log(f"CV {features} seed={seed} fold={i}: test={','.join(test_names)} val={','.join(val_names)} "
+                 f"macro_f1_nsvf={fold_s['macro_f1_nsvf']:.4f}")
+        s = summary(np.concatenate(y_true), np.concatenate(y_pred), CLASSES)
+        runs.append({"seed": int(seed), "summary": s, "folds": fold_info})
+        _log(f"CV {features} seed={seed}: gepoolt macro_f1_nsvf={s['macro_f1_nsvf']:.4f} macro_f1={s['macro_f1']:.4f}")
+
+    def stat(values: list[float]) -> dict:
+        a = np.asarray(values, dtype=np.float64)
+        return {"mean": float(a.mean()), "std": float(a.std(ddof=1)) if a.size > 1 else 0.0}
+
+    aggregate = {"macro_f1": stat([r["summary"]["macro_f1"] for r in runs]),
+                 "macro_f1_nsvf": stat([r["summary"]["macro_f1_nsvf"] for r in runs]),
+                 "per_class": {c: {m: stat([r["summary"]["per_class"][c][m] for r in runs])
+                                   for m in ("sensitivity", "ppv", "f1")} for c in CLASSES}}
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": _now(),
+        "split": "DS1 only (record-grouped k-fold), DS2 untouched",
+        "features": features,
+        "folds": folds,
+        "config": {"k": k, "seeds": [int(s) for s in seeds], "epochs": epochs, "patience": patience, "lr": lr,
+                   "batch_size": batch_size, "n_val": n_val, "max_class_share": max_class_share,
+                   "use_reference_peaks": use_reference_peaks,
+                   "preprocessing_fingerprint": preprocessing_fingerprint(),
+                   "library_versions": library_versions()},
+        "aggregate": aggregate,
+        "runs": runs,
+    }
+    _write_json(Path(out_dir) / f"cv_{features}.json", report)
+    m = aggregate["macro_f1_nsvf"]
+    _log(f"CV {features} fertig: macro_f1_nsvf = {m['mean']:.4f} ± {m['std']:.4f} über {len(runs)} Seeds")
+    return report
 
 
 def run_smoke(record_path: str | Path = "data/sample/100", out_dir: str | Path = "artifacts/smoke", *,
@@ -891,6 +1024,20 @@ def _build_parser() -> argparse.ArgumentParser:
     t.add_argument("--n-val", type=int, default=DEFAULT_VAL_RECORDS)
     t.add_argument("--max-depth", type=int, default=4)
     t.add_argument("--detected-peaks", action="store_true")
+    t.add_argument("--features", choices=FEATURE_SETS, default="base", help="Zusatz-Eingaben des CNN")
+
+    c = sub.add_parser("cv", help="Record-gruppierte Kreuzvalidierung des CNN nur auf DS1")
+    c.add_argument("--data-dir", default="data/mitdb")
+    c.add_argument("--out", default="artifacts/cv")
+    c.add_argument("--cache", default="artifacts/beats")
+    c.add_argument("--features", choices=FEATURE_SETS, default="base")
+    c.add_argument("--folds", type=int, default=5)
+    c.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    c.add_argument("--epochs", type=int, default=20)
+    c.add_argument("--patience", type=int, default=5, help="Early Stopping (0 = aus)")
+    c.add_argument("--n-val", type=int, default=3)
+    c.add_argument("--max-class-share", type=float, default=0.4)
+    c.add_argument("--detected-peaks", action="store_true")
 
     s = sub.add_parser("smoke", help="Mechanik-Test auf Record 100, 1 Epoche, nur artifacts/smoke/")
     s.add_argument("--record", default="data/sample/100")
@@ -915,7 +1062,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_train(args.data_dir, args.out, args.export or None, cache_dir=args.cache, epochs=args.epochs,
                       patience=args.patience or None, lr=args.lr, batch_size=args.batch_size, seed=args.seed,
                       n_val=args.n_val, val_records=args.val_records, max_depth=args.max_depth,
-                      use_reference_peaks=not args.detected_peaks)
+                      use_reference_peaks=not args.detected_peaks, features=args.features)
+        elif args.cmd == "cv":
+            run_cv(args.data_dir, args.out, cache_dir=args.cache, features=args.features, k=args.folds,
+                   seeds=args.seeds, epochs=args.epochs, patience=args.patience or None, n_val=args.n_val,
+                   max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks)
         elif args.cmd == "smoke":
             rep = run_smoke(args.record, args.out, epochs=args.epochs)
             return 0 if rep["ok"] else 1

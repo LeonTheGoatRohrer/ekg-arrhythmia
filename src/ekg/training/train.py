@@ -209,8 +209,8 @@ def train_cnn(
     weight_decay:
         L2 penalty passed to Adam (default 0).
     model_kwargs:
-        Extra constructor arguments for :class:`ECGNet1D` (``n_classes`` and
-        ``in_len`` are derived from the data / ``CLASSES`` unless given).
+        Extra constructor arguments for :class:`ECGNet1D` (``n_classes``,
+        ``in_len`` and ``n_rr`` are derived from the data / ``CLASSES`` unless given).
     on_epoch:
         Optional callback receiving each history entry (e.g. for logging).
 
@@ -232,7 +232,8 @@ def train_cnn(
     set_determinism(seed)
     dev = torch.device(device)
 
-    kwargs: dict[str, Any] = {"n_classes": len(CLASSES), "in_len": int(train.beats.shape[1])}
+    kwargs: dict[str, Any] = {"n_classes": len(CLASSES), "in_len": int(train.beats.shape[1]),
+                              "n_rr": int(train.rr.shape[1])}
     kwargs.update(model_kwargs or {})
     n_classes = int(kwargs["n_classes"])
     _check_labels(train, n_classes, "train")

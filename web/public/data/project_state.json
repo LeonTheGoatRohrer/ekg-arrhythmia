@@ -2,7 +2,7 @@
   "project": "EKG-Arrhythmie-Erkennung (MIT-BIH, AAMI EC57)",
   "version": 1,
   "created_at": "2026-11-01T21:42:46+00:00",
-  "updated_at": "2026-11-02T11:06:44+00:00",
+  "updated_at": "2026-11-02T12:04:18+00:00",
   "orchestrator": {
     "name": "mother-agent",
     "max_parallel_agents": 16
@@ -973,19 +973,25 @@
       "depends_on": [
         "pipeline-integration"
       ],
-      "summary": "Neutraining mit Validierung 114/119/122/201 (208 ausgeschlossen): CNN DS2 macro-F1 0.463, macro_f1_nsvf 0.579, Acc 0.896; S F1 0.508, V F1 0.858, F praktisch 0 (4/388 erkannt, 2018 N als F). Baum unveraendert 0.286.",
+      "summary": "DS1-Kreuzvalidierung (5 record-gruppierte Folds x 3 Seeds, DS2 nie geladen) fuer CNN-Merkmalssaetze: base 0.460+-0.020, rr 0.463+-0.023, patient 0.482+-0.024 (macro_f1_nsvf, gepoolte Out-of-fold-Vorhersagen). patient verbessert vor allem V (F1 0.626->0.714), nicht S (0.290->0.269). Finales Modell bleibt base (Lauf mit Val 114/119/122/201); keine neue DS2-Auswertung.",
       "decisions": [
-        "Regel nur aus DS1 abgeleitet und vor dem Lauf festgelegt: kein Record mit >=40% einer Klasse in der Validierung (208: 90% F, 209: 41% S); 208 durch 119 ersetzt, sonst gleiche Konfiguration. Lauf 2 wird unabhaengig vom DS2-Ergebnis behalten.",
-        "Befund: F generalisiert nicht, da 372/408 F-Trainingsbeats von einem Patienten (208) stammen."
+        "Regel vorab festgelegt: neue Variante nur, wenn Mittelwert > base + max(std); patient verfehlt knapp (+0.022 < 0.024) -> nicht uebernommen.",
+        "Bestes Epoch schwankt je Fold/Seed zwischen 1 und 20: Training/Early Stopping instabil, Varianz ist ein Hauptproblem."
       ],
       "files": [
         "artifacts/model.pt",
+        "src/ekg/pipeline.py",
+        "src/ekg/preprocessing/patient_features.py",
+        "src/ekg/training/train.py",
+        "tests/test_patient_features.py",
+        "tests/test_pipeline.py",
         "web/public/data/dataset_stats.json",
         "web/public/data/metrics.json",
         "web/public/data/tree.json"
       ],
       "tests": [
-        "python -m ekg.pipeline train --epochs 20 --val-records 114 119 122 201: exit 0, status complete"
+        "pytest -q: 209 passed, 1 skipped",
+        "python -m ekg.pipeline cv --features base|rr|patient: exit 0"
       ],
       "history": [
         {
@@ -1007,11 +1013,27 @@
           "t": "2026-11-02T11:06:44+00:00",
           "agent": "local-claude",
           "event": "done"
+        },
+        {
+          "t": "2026-11-02T11:24:38+00:00",
+          "agent": "local-claude",
+          "event": "note",
+          "note": "Vertragserweiterung: neues Modul ekg.preprocessing.patient_features (record-relative RR- und Template-Merkmale); pipeline: FEATURE_SETS/with_features/cv_folds/run_cv + CLI 'cv' und 'train --features'; select_validation_records(max_class_share=None); train_cnn leitet n_rr aus train.rr ab (bisher fest 4). BeatSet-Format und Cache unveraendert."
+        },
+        {
+          "t": "2026-11-02T11:24:39+00:00",
+          "agent": "local-claude",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-02T12:04:18+00:00",
+          "agent": "local-claude",
+          "event": "done"
         }
       ],
       "last_error": "physionet.org nicht erreichbar (Netzwerk-Policy der Umgebung). Freischalten, dann `make data && make train`.",
-      "started_at": "2026-11-02T11:04:30+00:00",
-      "finished_at": "2026-11-02T11:06:44+00:00"
+      "started_at": "2026-11-02T11:24:39+00:00",
+      "finished_at": "2026-11-02T12:04:18+00:00"
     }
   ]
 }
