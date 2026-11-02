@@ -1,0 +1,8 @@
+numpy
+scipy
+wfdb
+torch
+scikit-learn
+fastapi
+uvicorn
+httpx

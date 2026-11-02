@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "model": "ECGNet1D",
+  "layers": [
+    {
+      "name": "input",
+      "type": "Input",
+      "output_shape": [
+        1,
+        1,
+        252
+      ],
+      "params": 0,
+      "detail": "beat window, 252 samples"
+    },
+    {
+      "name": "rr_input",
+      "type": "Input",
+      "output_shape": [
+        1,
+        4
+      ],
+      "params": 0,
+      "detail": "4 RR features (pre_rr, post_rr, local_rr, pre/local ratio)"
+    },
+    {
+      "name": "features.conv1",
+      "type": "Conv1d",
+      "output_shape": [
+        1,
+        16,
+        252
+      ],
+      "params": 128,
+      "detail": "kernel=7, 1->16, padding=same"
+    },
+    {
+      "name": "features.bn1",
+      "type": "BatchNorm1d",
+      "output_shape": [
+        1,
+        16,
+        252
+      ],
+      "params": 32,
+      "detail": "features=16"
+    },
+    {
+      "name": "features.relu1",
+      "type": "ReLU",
+      "output_shape": [
+        1,
+        16,
+        252
+      ],
+      "params": 0,
+      "detail": "max(0, x)"
+    },
+    {
+      "name": "features.pool1",
+      "type": "MaxPool1d",
+      "output_shape": [
+        1,
+        16,
+        126
+      ],
+      "params": 0,
+      "detail": "pool=2"
+    },
+    {
+      "name": "features.conv2",
+      "type": "Conv1d",
+      "output_shape": [
+        1,
+        32,
+        126
+      ],
+      "params": 2592,
+      "detail": "kernel=5, 16->32, padding=same"
+    },
+    {
+      "name": "features.bn2",
+      "type": "BatchNorm1d",
+      "output_shape": [
+        1,
+        32,
+        126
+      ],
+      "params": 64,
+      "detail": "features=32"
+    },
+    {
+      "name": "features.relu2",
+      "type": "ReLU",
+      "output_shape": [
+        1,
+        32,
+        126
+      ],
+      "params": 0,
+      "detail": "max(0, x)"
+    },
+    {
+      "name": "features.pool2",
+      "type": "MaxPool1d",
+      "output_shape": [
+        1,
+        32,
+        63
+      ],
+      "params": 0,
+      "detail": "pool=2"
+    },
+    {
+      "name": "features.conv3",
+      "type": "Conv1d",
+      "output_shape": [
+        1,
+        64,
+        63
+      ],
+      "params": 6208,
+      "detail": "kernel=3, 32->64, padding=same"
+    },
+    {
+      "name": "features.bn3",
+      "type": "BatchNorm1d",
+      "output_shape": [
+        1,
+        64,
+        63
+      ],
+      "params": 128,
+      "detail": "features=64"
+    },
+    {
+      "name": "features.relu3",
+      "type": "ReLU",
+      "output_shape": [
+        1,
+        64,
+        63
+      ],
+      "params": 0,
+      "detail": "max(0, x)"
+    },
+    {
+      "name": "features.pool3",
+      "type": "MaxPool1d",
+      "output_shape": [
+        1,
+        64,
+        31
+      ],
+      "params": 0,
+      "detail": "pool=2"
+    },
+    {
+      "name": "features.gap",
+      "type": "AdaptiveAvgPool1d",
+      "output_shape": [
+        1,
+        64,
+        1
+      ],
+      "params": 0,
+      "detail": "global average, output_size=1"
+    },
+    {
+      "name": "features.flatten",
+      "type": "Flatten",
+      "output_shape": [
+        1,
+        64
+      ],
+      "params": 0,
+      "detail": "flatten to feature vector"
+    },
+    {
+      "name": "rr_branch.bn",
+      "type": "BatchNorm1d",
+      "output_shape": [
+        1,
+        4
+      ],
+      "params": 8,
+      "detail": "features=4"
+    },
+    {
+      "name": "rr_branch.fc",
+      "type": "Linear",
+      "output_shape": [
+        1,
+        16
+      ],
+      "params": 80,
+      "detail": "4->16"
+    },
+    {
+      "name": "rr_branch.relu",
+      "type": "ReLU",
+      "output_shape": [
+        1,
+        16
+      ],
+      "params": 0,
+      "detail": "max(0, x)"
+    },
+    {
+      "name": "concat",
+      "type": "Concat",
+      "output_shape": [
+        1,
+        80
+      ],
+      "params": 0,
+      "detail": "concat(CNN features, RR features)"
+    },
+    {
+      "name": "head.fc1",
+      "type": "Linear",
+      "output_shape": [
+        1,
+        64
+      ],
+      "params": 5184,
+      "detail": "80->64"
+    },
+    {
+      "name": "head.relu",
+      "type": "ReLU",
+      "output_shape": [
+        1,
+        64
+      ],
+      "params": 0,
+      "detail": "max(0, x)"
+    },
+    {
+      "name": "head.dropout",
+      "type": "Dropout",
+      "output_shape": [
+        1,
+        64
+      ],
+      "params": 0,
+      "detail": "p=0.3"
+    },
+    {
+      "name": "head.fc2",
+      "type": "Linear",
+      "output_shape": [
+        1,
+        5
+      ],
+      "params": 325,
+      "detail": "64->5"
+    }
+  ],
+  "total_params": 14749,
+  "input": {
+    "beat_len": 252,
+    "n_rr": 4
+  },
+  "note": "Architektur eines frisch initialisierten Modells – kein Trainingsergebnis."
+}

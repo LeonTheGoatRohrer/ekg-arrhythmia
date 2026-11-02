@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "status": "pending",
+  "reason": "Die vollständige MIT-BIH Arrhythmia Database (48 Records, davon 44 in DS1/DS2) ist nicht verfügbar: physionet.org ist in dieser Container-Umgebung durch die Netzwerk-Policy gesperrt. Ohne DS1 (Training) und DS2 (Test) werden keine Modell-Kennzahlen berechnet. Nachholen: physionet.org freischalten (oder lokal ausführen), dann `make data` (python scripts/download_mitdb.py --data-dir data/mitdb) und `make train` (python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data).",
+  "data_dir": "data/mitdb",
+  "records_available": 0,
+  "records_required": 44,
+  "missing": {
+    "DS1": [
+      "101",
+      "106",
+      "108",
+      "109",
+      "112",
+      "114",
+      "115",
+      "116",
+      "118",
+      "119",
+      "122",
+      "124",
+      "201",
+      "203",
+      "205",
+      "207",
+      "208",
+      "209",
+      "215",
+      "220",
+      "223",
+      "230"
+    ],
+    "DS2": [
+      "100",
+      "103",
+      "105",
+      "111",
+      "113",
+      "117",
+      "121",
+      "123",
+      "200",
+      "202",
+      "210",
+      "212",
+      "213",
+      "214",
+      "219",
+      "221",
+      "222",
+      "228",
+      "231",
+      "232",
+      "233",
+      "234"
+    ]
+  },
+  "generated_at": "2026-11-01T23:41:47+00:00",
+  "sample_record": {
+    "record": "100",
+    "split": "DS2",
+    "annotation_counts": {
+      "N": 2239,
+      "S": 33,
+      "V": 1,
+      "F": 0,
+      "Q": 0
+    },
+    "note": "Nur der Demo-Record (Annotationszählung) – keine Datensatz-Statistik."
+  }
+}

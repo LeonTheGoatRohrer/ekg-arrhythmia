@@ -1,0 +1,984 @@
+{
+  "project": "EKG-Arrhythmie-Erkennung (MIT-BIH, AAMI EC57)",
+  "version": 1,
+  "created_at": "2026-11-01T21:42:46+00:00",
+  "updated_at": "2026-11-01T23:45:40+00:00",
+  "orchestrator": {
+    "name": "mother-agent",
+    "max_parallel_agents": 16
+  },
+  "data_status": {
+    "mitdb_full": "unavailable (physionet.org blocked)",
+    "sample_records": [
+      "100"
+    ]
+  },
+  "waves": [],
+  "modules": [
+    {
+      "id": "infra-scaffold",
+      "block": "B0 Infrastruktur",
+      "title": "Repo-Layout, State-Protokoll, Interface-Verträge, venv/npm",
+      "status": "done",
+      "agent": "mother-agent",
+      "owns": [
+        "scripts/state.py",
+        "INTERFACES.md",
+        "MASTERPLAN.md",
+        "web/package.json"
+      ],
+      "depends_on": [],
+      "summary": "Repo initialisiert, venv + npm (vite 6, tailwind 4, mermaid 11), lock-sicheres State-Tool, Interface-Verträge.",
+      "decisions": [
+        "physionet.org ist im Container gesperrt (HTTP 403) -> echter MIT-BIH Record 100 aus dem wfdb-python Repo als Demo/Smoke-Daten, keine erfundenen Metriken",
+        "State-Updates nur via scripts/state.py (fcntl-Lock, atomares Schreiben) gegen Lost-Updates paralleler Agents",
+        "Vanilla-JS + Vite + Tailwind v4 + Mermaid lokal gebündelt (CDNs im Container gesperrt)"
+      ],
+      "files": [
+        "scripts/state.py",
+        "INTERFACES.md",
+        "MASTERPLAN.md",
+        "project_state.json",
+        "web/package.json",
+        "data/sample/100.*"
+      ],
+      "tests": [],
+      "history": [],
+      "finished_at": "2026-11-01T21:42:46+00:00"
+    },
+    {
+      "id": "data-loader",
+      "block": "B1 Daten-Pipeline",
+      "title": "wfdb-Datenloader, AAMI-Mapping, DS1/DS2-Split, Download",
+      "status": "done",
+      "agent": "data-loader-agent",
+      "owns": [
+        "src/ekg/data/loader.py",
+        "scripts/download_mitdb.py",
+        "tests/test_loader.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "ekg.data.loader implemented per INTERFACES.md (CLASSES, AAMI_MAP, MITDB_RECORDS, PACED_RECORDS, DS1/DS2 de Chazal 2004, Record, aami_class, load_record MLII/fallback ch0 float32 mV, available_records, download_mitdb via wfdb.dl_database with DataUnavailableError). CLI scripts/download_mitdb.py exits 2 with German network-policy hint; verified live: physionet.org blocked -> exit 2.",
+      "decisions": [
+        "load_record raises FileNotFoundError if .hea/.dat/.atr missing",
+        "download_mitdb skips records already present, temporarily sets wfdb db_index_url for base_url and restores it, wraps any exception into DataUnavailableError",
+        "Record has extra optional field lead (channel used)",
+        "Record 100 real counts: 2274 annotations, N=2239, A=33, V=1, '+'=1 -> AAMI N=2239, S=33, V=1"
+      ],
+      "files": [
+        "scripts/download_mitdb.py",
+        "src/ekg/data/loader.py",
+        "tests/test_loader.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_loader.py -q: 32 passed in 0.58s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:53:09+00:00",
+          "agent": "data-loader-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:54:34+00:00",
+          "agent": "data-loader-agent",
+          "event": "note",
+          "note": "Record dataclass has an extra optional field 'lead: str = \"MLII\"' (name of channel actually used) after ann_symbols; contract fields/order unchanged. download_mitdb also raises ValueError for unknown record names and DataUnavailableError if files are still incomplete after download."
+        },
+        {
+          "t": "2026-11-01T21:54:35+00:00",
+          "agent": "data-loader-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:53:09+00:00",
+      "finished_at": "2026-11-01T21:54:35+00:00"
+    },
+    {
+      "id": "signal-filters",
+      "block": "B1 Daten-Pipeline",
+      "title": "Baseline-Entfernung, Bandpass, Notch, Frequenzgang",
+      "status": "done",
+      "agent": "signal-filters-agent",
+      "owns": [
+        "src/ekg/preprocessing/filters.py",
+        "tests/test_filters.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "Implemented ekg.preprocessing.filters (remove_baseline, bandpass, notch, preprocess, frequency_response) per INTERFACES.md with 16 fast unit tests (synthetic sines + sanity on real record 100).",
+      "decisions": [
+        "Baseline: cascaded scipy.ndimage.median_filter 200 ms (73 samples) then 600 ms (217 samples) @360 Hz, odd kernels, mode=reflect (avoids medfilt zero-padding edge artefacts); ~0.07 s for 650000 samples",
+        "Bandpass: butter(order,[low,high],band,fs,sos)+sosfiltfilt (zero-phase); notch: iirnotch+filtfilt; inputs coerced to 1-D float64, ValueError on 2-D or invalid band",
+        "preprocess returns float32 with same length: baseline -> bandpass 0.5-40 Hz [-> notch 60 Hz]",
+        "frequency_response: n points linspace(0, fs/2) inclusive; gain_db = one-way |H| in dB (clipped at -200 dB to avoid -inf in JSON); extra keys gain_db_zero_phase = 2*gain_db (filtfilt squares magnitude) and fs"
+      ],
+      "files": [
+        "src/ekg/preprocessing/filters.py",
+        "tests/test_filters.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_filters.py -q: 16 passed in 1.44s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:53:09+00:00",
+          "agent": "signal-filters-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:54:18+00:00",
+          "agent": "signal-filters-agent",
+          "event": "done"
+        },
+        {
+          "t": "2026-11-01T21:54:18+00:00",
+          "agent": "signal-filters-agent",
+          "event": "note",
+          "note": "frequency_response returns additive extra keys 'gain_db_zero_phase' (as instructed) and 'fs' beyond the INTERFACES.md minimum; gain_db clipped at -200 dB at exact zeros (0 Hz, fs/2) for valid JSON."
+        }
+      ],
+      "started_at": "2026-11-01T21:53:09+00:00",
+      "finished_at": "2026-11-01T21:54:18+00:00"
+    },
+    {
+      "id": "r-peak-detection",
+      "block": "B1 Daten-Pipeline",
+      "title": "Pan-Tompkins R-Zacken-Detektion + Validierung",
+      "status": "done",
+      "agent": "r-peak-detection-agent",
+      "owns": [
+        "src/ekg/preprocessing/rpeaks.py",
+        "tests/test_rpeaks.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "Pan-Tompkins (1985) R-peak detector: zero-phase Butterworth 5-15 Hz band-pass -> centred 5-point derivative -> squaring -> centred 150 ms moving-window integration -> adaptive SPKI/NPKI thresholds with 200 ms refractory, 360 ms T-wave slope discrimination and search-back at 166% of mean RR. pan_tompkins_stages returns the 4 aligned intermediate signals; match_peaks does greedy nearest-first 1:1 matching. Validated on real MIT-BIH record 100 (MLII, read directly with wfdb, 2273 reference beats N/A/V): tol 150 ms -> TP 2273, FP 0, FN 0 (Se 1.0, PPV 1.0); tol 20 ms also Se/PPV 1.0; median offset to annotation +1 sample, max 3 samples. Single record only - not a database-level benchmark.",
+      "decisions": [
+        "Zero-phase (forward-backward) filtering and centred derivative/integration instead of the causal integer filters of the paper: no group delay, stages aligned with input.",
+        "Final R position = sample with max |x - median(window)| of the INPUT signal within +/-75 ms of the integrated-signal fiducial mark (not |bandpassed|): lands on the R apex as in MIT-BIH annotations, polarity-independent.",
+        "Thresholds only on the integrated signal (no second band-pass threshold set); learning phase = first 2 s (SPKI=0.25*max, NPKI=0.5*mean).",
+        "Mean RR = mean of last 8 RR within 92-116% of running mean (RR AVERAGE2), fallback plain mean of last 8 RR.",
+        "match_peaks: undefined ratios (no reference / no detections) reported as 0.0 to stay JSON-serialisable; tolerance boundary inclusive.",
+        "Degenerate input (len<5, constant, non-finite) returns empty int64 array; 2-D input raises ValueError."
+      ],
+      "files": [
+        "src/ekg/preprocessing/rpeaks.py",
+        "tests/test_rpeaks.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_rpeaks.py -q: 21 passed (1.5 s)",
+        ".venv/bin/pytest tests -q: 85 passed",
+        "record 100 MLII tol150: tp=2273 fp=0 fn=0 Se=1.0 PPV=1.0"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:54:36+00:00",
+          "agent": "r-peak-detection-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:57:29+00:00",
+          "agent": "r-peak-detection-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:54:36+00:00",
+      "finished_at": "2026-11-01T21:57:29+00:00"
+    },
+    {
+      "id": "beat-segmentation",
+      "block": "B1 Daten-Pipeline",
+      "title": "Beat-Fenster, RR-Features, BeatSet",
+      "status": "done",
+      "agent": "beat-segmentation-agent",
+      "owns": [
+        "src/ekg/preprocessing/segmentation.py",
+        "tests/test_segmentation.py"
+      ],
+      "depends_on": [
+        "data-loader",
+        "signal-filters"
+      ],
+      "summary": "segment_beats/rr_features/BeatSet/build_beat_dataset implemented per INTERFACES.md. Record 100: 2273 beat annotations -> 2271 beats (2 edge beats dropped), shape (2271,252), labels N=2237 S=33 V=1 (matches A=33, V=1 annotations), RR 0.52-1.13 s.",
+      "decisions": [
+        "Window [r-90, r+162) derived from pre_ms/post_ms and fs (round); beats whose window leaves the signal are dropped; segment_beats does no normalisation.",
+        "RR features computed per record on ALL beat peaks (incl. edge beats dropped later) then indexed by kept beats; non-beat annotations (+, ~, ...) are never RR neighbours; no cross-record window (no leakage).",
+        "pre_rr of first beat := post_rr, post_rr of last := pre_rr; local_rr = causal mean of last <=10 pre_rr incl. current (cumsum); single beat -> zeros, ratio 1; non-increasing peaks raise ValueError.",
+        "Per-beat z-normalisation in build_beat_dataset (flat beats -> zeros, eps 1e-6).",
+        "Detected-peak mode: RR on full detected sequence (as a deployed detector sees it), one-to-one nearest-annotation matching within 150 ms, unmatched detections dropped."
+      ],
+      "files": [
+        "src/ekg/preprocessing/segmentation.py",
+        "tests/test_segmentation.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_segmentation.py -q: 14 passed in 2.1s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:18:41+00:00",
+          "agent": "beat-segmentation-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:20:34+00:00",
+          "agent": "beat-segmentation-agent",
+          "event": "note",
+          "note": "Additive extras beyond contract (no signature changes): window_samples(fs,pre_ms,post_ms)->(pre,post), znormalize(beats), BeatSet.empty(length), BeatSet.__len__, constants LOCAL_RR_BEATS=10, MATCH_TOL_MS=150. BeatSet.concat([]) returns an empty BeatSet (L=252)."
+        },
+        {
+          "t": "2026-11-01T22:20:34+00:00",
+          "agent": "beat-segmentation-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:18:41+00:00",
+      "finished_at": "2026-11-01T22:20:34+00:00"
+    },
+    {
+      "id": "cnn-model",
+      "block": "B2 ML-Modell",
+      "title": "PyTorch 1D-CNN mit RR-Fusion + Architektur-Beschreibung",
+      "status": "done",
+      "agent": "cnn-model-agent",
+      "owns": [
+        "src/ekg/models/cnn1d.py",
+        "tests/test_cnn1d.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "ECGNet1D (PyTorch): 3 Conv-Bloecke (16/32/64 Kanaele, Kernel 7/5/3, padding=same, BN, ReLU, MaxPool2) -> GAP (64) + RR-Zweig BN(4)->Linear(4,16)->ReLU, Fusion 80 -> Linear(80,64)->ReLU->Dropout(0.3)->Linear(64,C). 14749 trainierbare Parameter (Default-Konfiguration). describe_architecture misst Output-Shapes per Forward-Hooks.",
+      "decisions": [
+        "RR-BatchNorm als _SafeBatchNorm1d (in describe als Typ 'BatchNorm1d'): bei Trainings-Batch der Groesse 1 werden Running-Stats verwendet (kein Crash bei letztem Mini-Batch der Groesse 1)",
+        "rr=None -> Null-Tensor (B,4); Eingabe (B,L) wird zu (B,1,L) erweitert; andere Shapes -> ValueError",
+        "Konkatenation als parameterfreies Modul 'concat' (hookbar), damit describe_architecture die Fusion (1,80) zeigt",
+        "describe_architecture: Layer-Namen = qualifizierte Modulnamen (features.conv1, rr_branch.fc, concat, head.fc2), Pseudo-Layer 'input' [1,1,L] und 'rr_input' [1,4]; output_shape inkl. Batch-Dim 1; Ausfuehrungsreihenfolge; eval-Modus, Trainingsmodus wird wiederhergestellt; Summe params == count_parameters",
+        "count_parameters zaehlt nur trainierbare Parameter (requires_grad)"
+      ],
+      "files": [
+        "src/ekg/models/cnn1d.py",
+        "tests/test_cnn1d.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest -q tests/test_cnn1d.py: 11 passed in 1.9s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:56:31+00:00",
+          "agent": "cnn-model-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:57:46+00:00",
+          "agent": "cnn-model-agent",
+          "event": "done"
+        },
+        {
+          "t": "2026-11-01T21:58:02+00:00",
+          "agent": "cnn-model-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:56:31+00:00",
+      "finished_at": "2026-11-01T21:58:02+00:00"
+    },
+    {
+      "id": "tree-baseline",
+      "block": "B2 ML-Modell",
+      "title": "Interpretierbarer Entscheidungsbaum + JSON/Mermaid-Export",
+      "status": "done",
+      "agent": "tree-baseline-agent",
+      "owns": [
+        "src/ekg/models/tree_baseline.py",
+        "tests/test_tree.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "Interpretable decision-tree baseline: 7 morphology features (qrs_width_ms, r_amplitude, q_depth, s_depth, qrs_area, t_amplitude, beat_energy) + 4 RR features, CART training with balanced class weights, nested JSON export and Mermaid flowchart TD rendering.",
+      "decisions": [
+        "qrs_width_ms: |derivative| dilated by 25 ms moving max, threshold 15% of peak in [R-100ms, R+150ms], contiguous run containing R; dilation length subtracted",
+        "beat_energy = fraction of total beat energy in [R-50ms, R+100ms] (absolute energy is constant under z-normalisation)",
+        "q_depth/s_depth are signed minima (more negative = deeper); amplitudes in z-units; qrs_area in z*ms",
+        "export_tree: value = normalised (class-weighted) distribution aligned with class_names, samples = n_node_samples (raw counts not recoverable with balanced weights), id = sklearn node index (int), extra key impurity; left = feature <= threshold",
+        "tree.classes_ mapped onto class_names by label id (supports subsets such as only N/S/V present)",
+        "extract_features(rr=None) returns morphology features only; optional keyword r_index (default round(0.25*fs)=90)",
+        "tree_to_mermaid: one line per node, leaves as stadium shape 'Klasse X (n=..)', edges ja (left) / nein (right), ids 'n'+sanitised id, quotes escaped as #quot;"
+      ],
+      "files": [
+        "src/ekg/models/tree_baseline.py",
+        "tests/test_tree.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_tree.py -q: 13 passed in 1.9s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:57:50+00:00",
+          "agent": "tree-baseline-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:00:14+00:00",
+          "agent": "tree-baseline-agent",
+          "event": "done"
+        },
+        {
+          "t": "2026-11-01T22:00:14+00:00",
+          "agent": "tree-baseline-agent",
+          "event": "note",
+          "note": "Additive extensions to INTERFACES signature: extract_features accepts rr=None and keyword-only r_index; export_tree nodes carry extra key 'impurity'; 'id' is an int (sklearn node index)."
+        }
+      ],
+      "started_at": "2026-11-01T21:57:50+00:00",
+      "finished_at": "2026-11-01T22:00:14+00:00"
+    },
+    {
+      "id": "training-loop",
+      "block": "B2 ML-Modell",
+      "title": "Trainingsschleife, Klassengewichte, Checkpoints",
+      "status": "done",
+      "agent": "training-loop-agent",
+      "owns": [
+        "src/ekg/training/train.py",
+        "tests/test_train.py"
+      ],
+      "depends_on": [
+        "cnn-model",
+        "beat-segmentation"
+      ],
+      "summary": "ekg.training.train: BeatTorchDataset, class_weights, train_cnn (Adam + class-weighted CE, deterministic, optional best-checkpoint/early stopping on val_macro_f1), predict/predict_logits, save_model/load_model (state_dict + constructor config).",
+      "decisions": [
+        "class_weights: inverse frequency normalised to mean 1 over present classes; classes with zero training support get weight 0",
+        "Determinism: random/numpy/torch seeded, torch.set_num_threads(min(4, cpu_count)), shuffling via dedicated seeded torch.Generator, manual index batching (no DataLoader workers); identical history+weights for same seed verified in tests",
+        "Model selection: with val, best epoch by val_macro_f1 (earliest on ties) is restored (restore_best=True); optional early stopping via patience. val MUST be built from held-out DS1 records, never from DS2 (documented in module + train_cnn docstring)",
+        "Losses reported as class-weighted mean CE (training weights) over all beats; val_loss None instead of NaN so history stays strict JSON",
+        "Checkpoint format: torch.save dict {format:'ekg.ECGNet1D', version:1, config, class_names, state_dict}; load_model uses weights_only=True and rejects foreign files"
+      ],
+      "files": [
+        "src/ekg/training/train.py",
+        "tests/test_train.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest -q tests/test_train.py: 11 passed in ~5 s (synthetic beats only; separable 3-class set reaches val macro-F1 > 0.9, save/load logits identical)"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:20:47+00:00",
+          "agent": "training-loop-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:22:50+00:00",
+          "agent": "training-loop-agent",
+          "event": "note",
+          "note": "Contract extension (backward compatible): train_cnn has extra keyword-only params patience=None, restore_best=True, weight_decay=0.0, model_kwargs=None, on_epoch=None; history entries additionally contain val_accuracy, lr, best; extra helpers set_determinism(seed) and predict_logits(model, data). load_model(path, map_location='cpu'). val_loss is None (not NaN) without val or if val has only classes absent in train."
+        },
+        {
+          "t": "2026-11-01T22:22:50+00:00",
+          "agent": "training-loop-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:20:47+00:00",
+      "finished_at": "2026-11-01T22:22:50+00:00"
+    },
+    {
+      "id": "evaluation",
+      "block": "B3 Evaluierung",
+      "title": "Konfusionsmatrix, Sens/PPV/Spez/F1 nach AAMI EC57",
+      "status": "done",
+      "agent": "evaluation-agent",
+      "owns": [
+        "src/ekg/evaluation/metrics.py",
+        "tests/test_metrics.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "AAMI-EC57-Metriken implementiert: confusion (rows=true, cols=pred, int64, Eingabevalidierung), per_class_metrics (Se/PPV/Sp/F1 one-vs-rest + support + tp/fp/fn/tn), summary (JSON-serialisierbar, reine Python-Typen), optionale gross_statistics (gross=gepoolt, average=Mittel pro Record).",
+      "decisions": [
+        "Division durch 0 ergibt 0.0 (nie NaN), damit JSON-serialisierbar und vergleichbar",
+        "macro_f1 = ungewichtetes Mittel der F1 nur ueber Klassen mit support>0; ohne unterstuetzte Klasse 0.0",
+        "accuracy bei leerer Eingabe = 0.0",
+        "gross_statistics: average mittelt pro Metrik nur ueber Records mit Nenner>0 (n_records_<metric> wird mitgeliefert)",
+        "EC57-VEB-Konvention optional (default an): echte F-Beats als V klassifiziert zaehlen nicht als FP (und nicht als TN) fuer V; Klasse F selbst unveraendert"
+      ],
+      "files": [
+        "src/ekg/evaluation/metrics.py",
+        "tests/test_metrics.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_metrics.py -q: 16 passed in 1.29s"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:54:49+00:00",
+          "agent": "evaluation-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:56:14+00:00",
+          "agent": "evaluation-agent",
+          "event": "note",
+          "note": "Additive contract extension: per_class entries also contain raw counts tp/fp/fn/tn; summary has extra key 'n' (total beats); new optional function gross_statistics(per_record, class_names, veb_ignore_fusion=True). All INTERFACES.md keys unchanged."
+        },
+        {
+          "t": "2026-11-01T21:56:14+00:00",
+          "agent": "evaluation-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:54:49+00:00",
+      "finished_at": "2026-11-01T21:56:14+00:00"
+    },
+    {
+      "id": "pipeline-integration",
+      "block": "B3 Evaluierung",
+      "title": "End-to-End-Pipeline, Web-Export, Makefile, README",
+      "status": "done",
+      "agent": "pipeline-integration-agent",
+      "owns": [
+        "src/ekg/pipeline.py",
+        "Makefile",
+        "README.md",
+        "tests/test_pipeline.py"
+      ],
+      "depends_on": [
+        "data-loader",
+        "signal-filters",
+        "r-peak-detection",
+        "beat-segmentation",
+        "cnn-model",
+        "tree-baseline",
+        "training-loop",
+        "evaluation"
+      ],
+      "summary": "Integrated wave 1: full suite green (175 passed). New CLI src/ekg/pipeline.py (demo/prepare/train/smoke/export-state), tests/test_pipeline.py (13 tests), Makefile, README.md (German). make demo filled web/public/data from REAL record 100 (10-s window 1513.9-1523.9 s containing the record's single V beat; 12 N + 12 S + 1 V real beats; architecture of a fresh ECGNet1D, 14,749 params; log-spaced filter response); metrics.json and dataset_stats.json status 'pending' with German reason, no tree.json. Measured Pan-Tompkins on whole record 100 vs reference annotations (tol 150 ms): TP 2273, FP 0, FN 0, sensitivity 1.0, PPV 1.0 - single record, not a benchmark. make smoke OK (artifacts/smoke only). train/prepare exit 2 with list of missing DS1/DS2 records (physionet.org blocked).",
+      "decisions": [
+        "R peaks for the demo are detected on the preprocessed signal (same input as build_beat_dataset); Pan-Tompkins stages computed on the whole record and sliced to the window (no filter edge effects).",
+        "Demo window chosen automatically: windows centred on each non-N beat, score = sum of 1/count(class) of non-N beats inside -> record 100's single V beat; --start-s overrides.",
+        "train: CNN trained on DS1 minus a record-wise validation hold-out of 4 DS1 records (seeded draw that keeps N/S/V in val and all classes in train; --val-records overrides); early stopping patience 5 on val macro-F1; tree trained on all DS1 beats (no tuning); both evaluated on DS2 only; gross EC57 statistics added.",
+        "prepare caches one npz per record (artifacts/beats/<rec>_ref.npz) keyed by version, window and file size/mtime; reference annotations as R peaks by default (--detected-peaks for Pan-Tompkins).",
+        "Smoke: record 100 split in time 60/20/20, 1 epoch, outputs smoke_*.json with status 'smoke' and an explicit warning, refuses any path under web/.",
+        "frequency_response extended (keyword-only log_spaced/f_min) so the UI gets log-spaced frequencies; default behaviour unchanged."
+      ],
+      "files": [
+        "Makefile",
+        "README.md",
+        "artifacts/smoke/",
+        "src/ekg/pipeline.py",
+        "src/ekg/preprocessing/filters.py",
+        "tests/test_filters.py",
+        "tests/test_pipeline.py",
+        "web/public/data/"
+      ],
+      "tests": [
+        ".venv/bin/pytest -q: 175 passed, 0 failed (~12 s)",
+        ".venv/bin/pytest -q tests/test_pipeline.py: 13 passed (~8 s)",
+        "make demo: 7 files in web/public/data; record-100 R-peak detection tp=2273 fp=0 fn=0 sens=1.0 ppv=1.0",
+        "make smoke: OK (cache roundtrip, model reload identical logits, 1 epoch history, tree export)",
+        "python -m ekg.pipeline train --data-dir <empty>: exit 2, German message listing 44 missing records"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:30:48+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:38:38+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "note",
+          "note": "src/ekg/preprocessing/filters.py: frequency_response got additive keyword-only args log_spaced=False, f_min=0.05 and an extra key 'spacing' ('linear'|'log'); default output unchanged. Used by the web export for log-spaced frequencies (requested by ui-charts). New test test_frequency_response_log_spaced in tests/test_filters.py."
+        },
+        {
+          "t": "2026-11-01T22:38:38+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "note",
+          "note": "signal_demo.json: additive keys schema_version, lead, unit, start_sample, duration_s, window_reason, preprocessing, detection_window, detection_note. detection = match_peaks over the WHOLE record 100 (plain numbers + tol_ms, scope='record', n_reference, n_detected). For ui-integration: overview.js tile hint says 'nur dieses Fenster' - wrong, should say 'gesamter Record 100'; window-only counts are in detection_window."
+        },
+        {
+          "t": "2026-11-01T22:38:38+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "note",
+          "note": "segmentation_demo.json: beats are preprocessed mV (unit='mV', not z-normalised), extra keys length, r_index, counts, record, note; examples carry sample/time_s. dataset_stats.json pending: no per_split, records_available is an int (records of DS1/DS2 present in data/mitdb), plus missing{DS1,DS2} and sample_record.annotation_counts. metrics.json pending: cnn/tree null, reason (German) + how_to. Complete metrics.json adds records{train,val,test}, beats, per_split, config, cnn.gross_statistics/params/epochs_run/best_epoch, tree.gross_statistics/depth/n_leaves/features."
+        },
+        {
+          "t": "2026-11-01T22:38:38+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "note",
+          "note": "smoke writes only artifacts/smoke/ with smoke_-prefixed files (status 'smoke') so neither the API whitelist nor the UI can pick them up; run_smoke refuses any out dir inside web/. demo never overwrites metrics.json/dataset_stats.json with status 'complete' (unless --force) and never writes tree.json. Added CLI command export-state (copies project_state.json to web/public/data) - the copy is a snapshot; re-run 'make state' after state changes."
+        },
+        {
+          "t": "2026-11-01T22:38:50+00:00",
+          "agent": "pipeline-integration-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:30:48+00:00",
+      "finished_at": "2026-11-01T22:38:50+00:00"
+    },
+    {
+      "id": "api-server",
+      "block": "B4 Prozess-UI",
+      "title": "FastAPI: State, Daten-Export, statisches UI",
+      "status": "done",
+      "agent": "api-server-agent",
+      "owns": [
+        "src/ekg/api/server.py",
+        "tests/test_api.py"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "FastAPI-Server ekg.api.server: /api/health, /api/state (frisch gelesen), /api/data/{name} (Whitelist + Regex, Suche web/public/data -> artifacts/web, traversal-sicher), statisches UI aus web/dist (html=True) bzw. JSON-Hinweis auf '/', Cache-Control no-store fuer /api, main() mit argparse -> uvicorn.",
+      "decisions": [
+        "EKG_ROOT wird pro Request aufgeloest (nicht beim Import), damit Tests/Deployments den Root zur Laufzeit setzen koennen; Default = parents[3] von server.py (Repo-Root)",
+        "Path-Traversal dreifach abgesichert: re.fullmatch('[a-z_]+\\.json') + Stem-Whitelist + resolve().is_relative_to(base) (faengt auch Symlink-Ausbrueche)",
+        "Statisches UI via eigener ASGI-Huelle um StaticFiles(html=True): prueft web/dist pro Request (Build nach Serverstart wird erkannt); unbekannte /api/*-Pfade liefern immer 404 statt index.html",
+        "Daten-Dateien werden als Bytes mit application/json ausgeliefert (kein Re-Parse); /api/state: 404 wenn Datei fehlt, 503 bei ungueltigem JSON"
+      ],
+      "files": [
+        "src/ekg/api/server.py",
+        "tests/test_api.py"
+      ],
+      "tests": [
+        ".venv/bin/pytest tests/test_api.py -q: 27 passed in 0.82s",
+        "live smoke python -m ekg.api.server --port 8765: /api/health ok, /api/state 200 no-store, ..%2f -> 404, / -> JSON-Hinweis (kein web/dist)"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:58:21+00:00",
+          "agent": "api-server-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T21:59:34+00:00",
+          "agent": "api-server-agent",
+          "event": "note",
+          "note": "Additive: /api/docs + /api/openapi.json (FastAPI docs under /api); /api/state returns 404 if project_state.json missing, 503 if invalid JSON; unmatched /api/* always 404 JSON (never falls through to static UI); EKG_ROOT resolved per request (not at import); extra helpers create_app(), get_root(), resolve_data_file(name, root=None), DATA_WHITELIST."
+        },
+        {
+          "t": "2026-11-01T21:59:34+00:00",
+          "agent": "api-server-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:58:21+00:00",
+      "finished_at": "2026-11-01T21:59:34+00:00"
+    },
+    {
+      "id": "ui-shell",
+      "block": "B4 Prozess-UI",
+      "title": "Layout, Routing, Dark/Light, Process-View-Komposition",
+      "status": "done",
+      "agent": "ui-shell-agent",
+      "owns": [
+        "web/index.html",
+        "web/vite.config.js",
+        "web/src/main.js",
+        "web/src/style.css",
+        "web/src/lib/",
+        "web/src/views/"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "Web-UI-Shell fertig: Vite/Tailwind-v4-Shell mit Hash-Routing (#/, #/process[/<step>], #/status), Header mit EKG-Logo, Navigation, Hell/Dunkel/System-Toggle (localStorage, themechange-Event, kein Flash), mobile Navigation <768px. Uebersicht mit Hero (echter Record-100-Ausschnitt aus signal_demo.json), ehrlichem Datenstatus-Banner (physionet.org gesperrt, metrics pending), KPI-Kacheln nur aus vorhandenen Exporten, AAMI-Klassenlegende, pipeline-overview-Diagramm. Process-View: Pipeline-Diagramm, sticky Stepper mit Scrollspy + Fortschritt (Desktop) bzw. sticky Dropdown (Mobile), Schrittkarten (Phase-Badge, Kicker, Titel, Summary, Body, Bullets, Diagramm-Karte, Daten-Panel-Karte, codeRef-Chip), lazy Rendering per IntersectionObserver, Deep-Links. Status-View: project_state.json (Fallback /api/state), Module nach Block gruppiert, Status-Pills, Fortschrittsbalken, aufklappbare Details, agent-orchestration-Diagramm.",
+      "decisions": [
+        "Design-Tokens aus INTERFACES.md als CSS-Variablen in :root/.dark; zusaetzlich via @theme inline als Tailwind-Utilities (bg-surface, text-muted, border-line ...)",
+        "Lokale Fonts via @fontsource-variable/inter + jetbrains-mono (CDNs gesperrt); tabular-nums fuer Zahlen",
+        "steps.js/diagrams/components per dynamic import(): Mermaid nicht im Initial-Bundle (Entry ~50 kB), defekte Module brechen nur ihre Karte",
+        "loadJSON sendet Accept: application/json und verwirft HTML-Antworten (Vite SPA-Fallback), merkt sich nicht erreichbare API (keine wiederholten 5xx)",
+        "Scroll-Pinning per ResizeObserver, damit Deep-Links/TOC-Klicks trotz nachladender Diagramme auf dem Ziel landen",
+        "Kennzahlen-Kacheln nur aus vorhandenen Exporten; R-Zacken-Sensitivitaet/PPV explizit als 'nur dieses Fenster, Record 100' beschriftet; Modellmetriken nur bei metrics.status=complete"
+      ],
+      "files": [
+        "web/index.html",
+        "web/package.json",
+        "web/src/lib/data.js",
+        "web/src/lib/dom.js",
+        "web/src/lib/lazy.js",
+        "web/src/lib/theme.js",
+        "web/src/lib/ui.js",
+        "web/src/main.js",
+        "web/src/style.css",
+        "web/src/views/overview.js",
+        "web/src/views/process.js",
+        "web/src/views/status.js",
+        "web/vite.config.js"
+      ],
+      "tests": [
+        "node --check (alle Shell-Dateien): ok",
+        "vite build in Scratch-Kopie mit echten diagrams/ + Test-Stubs fuer steps.js/components (fehlten noch) + echten Record-100-Exporten: ok (built in ~12 s)",
+        "Playwright vite preview light/dark x 1440px/375px x 3 Routen: keine pageerrors, keine horizontale Scrollbar; einzige Konsolenmeldungen = erwartete 404/500 fuer fehlende optionale Dateien (segmentation_demo.json, tree.json; API nicht gestartet)",
+        "Playwright Interaktion: Theme-Toggle+Persistenz+System, blockiertes localStorage, Deep-Link, TOC-Scrollspy, Mobile-Menue, Mobile-TOC, unbekannte Route -> #/: alle ok"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T21:59:50+00:00",
+          "agent": "ui-shell-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:14:22+00:00",
+          "agent": "ui-shell-agent",
+          "event": "note",
+          "note": "theme.js: getTheme() returns the stored PREFERENCE ('light'|'dark'|'system'); additive getEffectiveTheme(), initTheme(), cssVar(). themechange detail = {theme: effective, preference}. Additive helper modules web/src/lib/{dom,lazy,ui}.js; data.js additionally exports clearCache(), fetchApi(). Process view passes renderFn(container, data ?? null, {panel, step, dataFile, raw}) and calls renderDiagram(frame, id, {caption:false}) because the card shows title/caption itself. steps.js/components/index.js are loaded via dynamic import() (code-split, Mermaid out of the initial bundle) - a missing/broken module only shows an error card."
+        },
+        {
+          "t": "2026-11-01T22:14:22+00:00",
+          "agent": "ui-shell-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T21:59:50+00:00",
+      "finished_at": "2026-11-01T22:14:22+00:00"
+    },
+    {
+      "id": "ui-diagrams",
+      "block": "B4 Prozess-UI",
+      "title": "Mermaid-Diagramme: Pipeline, Layer, Pan-Tompkins, Entscheidungslogik, Split",
+      "status": "done",
+      "agent": "ui-diagrams-agent",
+      "owns": [
+        "web/src/diagrams/"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "web/src/diagrams/: Mermaid-11-Modul mit 7 Pflicht-Diagrammen (deutsche Labels, title+caption), renderDiagram/renderMermaidSource, Theme aus CSS-Tokens (theme base, themeVariables + semantische classDefs), automatisches Re-Rendering bei themechange und html.dark-Klassenwechsel, Fehlerkarte statt Absturz, responsive SVGs. Verifiziert per mermaid.parse + echtem Rendering in Chromium (light/dark, Desktop 1100px + Mobile 375px).",
+      "decisions": [
+        "Quellen sind theme-agnostisch (nur Klassennamen data/proc/model/result/decision/muted/note/clsN..clsQ); classDef-Zeilen mit aufgeloesten Token-Hexwerten werden beim Rendern an Flowcharts angehaengt -> funktioniert fuer alle Mermaid-Shapes ohne CSS-Selektor-Hacks",
+        "Tokens via getComputedStyle; fehlende/nicht hex-rgb Werte fallen auf INTERFACES.md-Werte zurueck (khroma braucht parsebare Farben)",
+        "Renders serialisiert ueber Promise-Queue, eindeutige IDs ekg-mmd-<key>-<n>, Versionszaehler verwirft veraltete Renders, Re-Render nur bei geaenderter Theme-Signatur (dedupliziert Event + MutationObserver)",
+        "securityLevel strict, startOnLoad false, htmlLabels, Fonts werden vor dem ersten Render abgewartet (max. 1,5 s)",
+        "SVG: kein height-Attribut, width 100%/max-width 100%/height auto; auf schmalen Screens min-width min(natuerlich, 420px) mit horizontal scrollbarem Canvas statt unlesbar kleiner Schrift (keine Seiten-Ueberbreite)",
+        "Layer-Shapes gegen describe_architecture verifiziert: 1x252 -> 16x252 -> 16x126 -> 32x63 -> 64x31 -> GAP 64; RR 4 -> 16; Concat 80 -> 64 -> 5; 14749 Parameter",
+        "decision-tree-logic ist explizit als didaktische Skizze mit typischen Lehrbuchschwellen gekennzeichnet, kein Modellergebnis; Pan-Tompkins-Diagramm folgt der Implementierung in rpeaks.py (THR1/THR2, 200 ms Refraktaer, T-Wellen-Test, Searchback 166 %, +-75 ms Refinement)"
+      ],
+      "files": [
+        "web/src/diagrams/definitions.js",
+        "web/src/diagrams/index.js"
+      ],
+      "tests": [
+        "Playwright/Chromium (scratch Vite-Server, Testseite ausserhalb des Repos, danach gestoppt): mermaid.parse 7/7 ok; Rendering 7/7 + tree_to_mermaid-Quelle ok in light und dark, Desktop 1100px und Mobile 375px; kaputte Quelle und unbekannte ID -> Fehlerkarte ohne Exception; keine pageerrors, keine doppelten IDs, keine Seiten-Ueberbreite; Theme-Roundtrip via Event und nur-Klasse re-rendert (fill #111827 -> #ffffff)"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:00:35+00:00",
+          "agent": "ui-diagrams-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:10:29+00:00",
+          "agent": "ui-diagrams-agent",
+          "event": "note",
+          "note": "API-Erweiterung (abwaertskompatibel): renderDiagram(container,id,opts?) rendert <figure> mit SVG + figcaption (caption); opts.caption=false unterdrueckt die Caption, Titel wird nur als aria-label genutzt (Karte zeigt ihn). Rueckgabe {id, ok, destroy()}. Zusaetzliche Exporte: DIAGRAM_IDS, renderMermaidSource(container, source, key, {title?, caption?}), rerenderAll()."
+        },
+        {
+          "t": "2026-11-01T22:10:29+00:00",
+          "agent": "ui-diagrams-agent",
+          "event": "note",
+          "note": "Fachlicher Hinweis fuer review-qa/ui-content: Laut PhysioNet stammen MIT-BIH Records 201 (DS1) und 202 (DS2) vom selben Probanden; der de-Chazal-Split ist daher record-, nicht streng patientendisjunkt. Caption von inter-patient-split nennt das."
+        },
+        {
+          "t": "2026-11-01T22:10:29+00:00",
+          "agent": "ui-diagrams-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:00:35+00:00",
+      "finished_at": "2026-11-01T22:10:29+00:00"
+    },
+    {
+      "id": "ui-charts",
+      "block": "B4 Prozess-UI",
+      "title": "SVG-Visualisierungen: EKG, Filter, Beats, Konfusionsmatrix, Baum",
+      "status": "done",
+      "agent": "ui-charts-agent",
+      "owns": [
+        "web/src/components/"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "9 handgeschriebene SVG-Visualisierungen unter web/src/components/ (index.js re-exportiert alle render*-Funktionen; Signatur render…(container, data, opts?) -> { destroy() }). Farben ausschliesslich ueber var(--c-…)-Tokens, Dark/Light ohne Re-Render; responsiv via viewBox + ResizeObserver; Empty-States fuer null/pending (Volltraining-Hinweis bzw. fehlender Export).",
+      "decisions": [
+        "Gemeinsame Helfer in shared.js (Skalen, Achsen, Tooltip, Brush, Empty-State, de-DE-Formatierung); Styles als einmalig injiziertes <style id=ekc-styles> mit Prefix ekc-, damit unabhaengig vom Tailwind-Scan",
+        "ECG: EKG-Papier-Raster 0,04 s/0,1 mV (nur wenn lesbar) + 0,2 s/0,5 mV Hauptlinien, Toggle-Chips, Pan/Zoom per Overview-Brush, Drag, Strg/Shift+Mausrad, Tastatur; Crosshair zeigt Roh/Gefiltert + naechste Annotation",
+        "renderTrainingCurve/renderConfusionMatrix akzeptieren history-Array bzw. summary (wie von process.js per select geliefert) und auch das ganze metrics-Objekt; pending-Grund aus opts.raw.reason wird angezeigt",
+        "Architektur: Layer werden zu Bloecken gruppiert (Gewichtsschicht + BN/ReLU/Dropout), RR-Zweig als zweite Spur, die in Fusion (Concat) muendet; horizontal scrollbar mit 'An Breite anpassen'-Toggle",
+        "Baum: eigene Kopie der Knoten (Eingabe wird nicht mutiert), initial bis Tiefe 2 aufgeklappt (opts.initialDepth), Klassenverteilung explizit als klassengewichtet gekennzeichnet",
+        "BeatGallery zeigt fehlende Klassen (F, Q in Record 100) ehrlich als 'nicht vorhanden' statt leerem Plot"
+      ],
+      "files": [
+        "web/src/components/architecture.js",
+        "web/src/components/beat-gallery.js",
+        "web/src/components/confusion-matrix.js",
+        "web/src/components/dataset-stats.js",
+        "web/src/components/ecg-chart.js",
+        "web/src/components/filter-response.js",
+        "web/src/components/index.js",
+        "web/src/components/pan-tompkins.js",
+        "web/src/components/shared.js",
+        "web/src/components/training-curve.js",
+        "web/src/components/tree-view.js"
+      ],
+      "tests": [
+        "Playwright-Testseite (temporaer, Scratch, danach geloescht) mit echtem Record 100 + Scratch-Testdaten, light+dark, Viewports 1100/768/390: 27/27 Checks gruen (Render, 6 Empty-States, Tooltips, Zoom/Brush/Toggle, Baum auf/zu inkl. Tastatur, destroy leert Container, 0 Konsolenfehler), ~9 s",
+        "npx vite build (outDir Scratch): ok"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:10:49+00:00",
+          "agent": "ui-charts-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:30:17+00:00",
+          "agent": "ui-charts-agent",
+          "event": "note",
+          "note": "Hinweis an pipeline-integration: frequency_response() liefert linear verteilte Frequenzen (n=512, ~0,35 Hz Abstand); auf der log-Achse ist der Bereich um die 0,5-Hz-Grenzfrequenz dadurch nur grob aufgeloest. Fuer filter_response.json waeren log-verteilte Frequenzen (z.B. np.geomspace(0.05, fs/2, 512)) schoener; renderFilterResponse verarbeitet beides."
+        },
+        {
+          "t": "2026-11-01T22:30:17+00:00",
+          "agent": "ui-charts-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:10:49+00:00",
+      "finished_at": "2026-11-01T22:30:17+00:00"
+    },
+    {
+      "id": "ui-content",
+      "block": "B4 Prozess-UI",
+      "title": "Schritt-für-Schritt-Inhalte der Process-Ansicht",
+      "status": "done",
+      "agent": "ui-content-agent",
+      "owns": [
+        "web/src/process/steps.js"
+      ],
+      "depends_on": [
+        "infra-scaffold"
+      ],
+      "summary": "web/src/process/steps.js: 13 German process steps (STEPS) + PHASES in 6 phases; summary for laypeople, technical HTML body, bullets, diagram/panel/dataFile/codeRef per INTERFACES.md",
+      "decisions": [
+        "STEPS[].phase holds the display label (shell renders it verbatim); PHASES[].id equals that label, PHASES[].label is the long name",
+        "dataFile set only on steps with a panel and always identical to the PANELS mapping in views/process.js",
+        "No model metrics anywhere; record-100 facts (MLII/V5, 2239 N, 33 A, 1 V) verified from data/sample/100.hea/.atr; record 100 noted as DS2 member, demo only",
+        "Pan-Tompkins text documents deviations of rpeaks.py from the 1985 original (zero-phase 5-15 Hz, centred derivative, +/-75 ms refinement)"
+      ],
+      "files": [
+        "web/src/process/steps.js"
+      ],
+      "tests": [
+        "node import steps.js: 13 steps",
+        "node scratchpad validator (ids/order, phases, required fields, panel/diagram/dataFile/codeRef against required IDs, allowed tags only, balanced HTML, no inline styles): OK"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:14:50+00:00",
+          "agent": "ui-content-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T22:18:26+00:00",
+          "agent": "ui-content-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:14:50+00:00",
+      "finished_at": "2026-11-01T22:18:26+00:00"
+    },
+    {
+      "id": "ui-integration",
+      "block": "B4 Prozess-UI",
+      "title": "Build, Verdrahtung, Screenshot-Verifikation (Light/Dark/Mobile)",
+      "status": "done",
+      "agent": "ui-integration-agent",
+      "owns": [
+        "web/"
+      ],
+      "depends_on": [
+        "ui-shell",
+        "ui-diagrams",
+        "ui-charts",
+        "ui-content",
+        "pipeline-integration"
+      ],
+      "summary": "UI integrated and verified end to end: npm run build passes; FastAPI serves web/dist; Playwright on #/, #/process, #/status in light+dark at 1440px and 375px: 0 console errors, 0 page errors, 0 HTTP>=400, 7/7 Mermaid diagrams rendered (no error SVGs), 6 panels with real Record-100 data + 3 clean pending empty states (training, confusion, tree) + dataset pending, no horizontal page overflow. Interaction suite 22/22 (theme toggle + diagram re-theme, persistence, scrollspy, TOC/phase/deep-link navigation, mobile menu + step dropdown). Visual polish: two-column Process intro with phase navigator, overview pipeline stage list next to diagram, min:s time axes, readable pending reasons with inline code, diagram scroll hint on mobile, wrapping card titles, more opaque sticky bars, correct scroll offsets. Screenshots in docs/screenshots/.",
+      "decisions": [
+        "Status view prefers live /api/state over the exported snapshot so the Agenten-Status page is current when served by FastAPI.",
+        "tree.json fetch is gated on metrics.json status=complete (tree only exists after full DS1 training) to avoid 404s in the console.",
+        "ECG/Pan-Tompkins time axes use min:s (25:14) instead of seconds (1.514), which German readers misread as a thousands separator.",
+        "Overview R-peak tile hint now says 'gesamter Record 100 (2.273 Referenz-Schlaege)' as detection.scope='record' (pipeline note).",
+        "Full-page desktop Process screenshot taken at deviceScaleFactor 0.5: Chromium blanks full-page captures taller than ~16k device px.",
+        "Architecture chain auto-fits to width only when scaling >= 62 %; otherwise it scrolls inside its card (readable text over fit)."
+      ],
+      "files": [
+        "docs/screenshots/",
+        "web/src/components/architecture.js",
+        "web/src/components/ecg-chart.js",
+        "web/src/components/filter-response.js",
+        "web/src/components/pan-tompkins.js",
+        "web/src/components/shared.js",
+        "web/src/lib/ui.js",
+        "web/src/style.css",
+        "web/src/views/overview.js",
+        "web/src/views/process.js",
+        "web/src/views/status.js"
+      ],
+      "tests": [
+        "cd web && npm run build: ok (11.6 s)",
+        "playwright check (3 routes x light/dark x 1440/375 against FastAPI :8000): 0 problems",
+        "playwright interaction suite: 22/22 passed",
+        ".venv/bin/pytest tests -q: 175 passed"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T22:39:18+00:00",
+          "agent": "ui-integration-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T23:18:49+00:00",
+          "agent": "ui-integration-agent",
+          "event": "note",
+          "note": "Status view now reads live /api/state first and falls back to data/project_state.json (snapshot) only for static hosting; on a static host without API the /api/state 404 appears once in the console."
+        },
+        {
+          "t": "2026-11-01T23:18:49+00:00",
+          "agent": "ui-integration-agent",
+          "event": "note",
+          "note": "PANELS.tree gains gate:'metrics.json': tree.json is only fetched when metrics.json status is complete (avoids 404 console errors while training is pending); empty state shows the pipeline reason."
+        },
+        {
+          "t": "2026-11-01T23:18:49+00:00",
+          "agent": "ui-integration-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T22:39:18+00:00",
+      "finished_at": "2026-11-01T23:18:49+00:00"
+    },
+    {
+      "id": "review-qa",
+      "block": "B5 Qualität",
+      "title": "Adversariales Review: ML-Korrektheit, Tests, UI, Ehrlichkeit der Aussagen",
+      "status": "done",
+      "agent": "review-qa-agent",
+      "owns": [],
+      "depends_on": [
+        "pipeline-integration",
+        "ui-integration"
+      ],
+      "summary": "Fix agent: verified all 17 review findings (all reproducible), fixed all 17. Pan-Tompkins threshold recovery, QRS width incl. Q/S, capped class weights + macro_f1_nsvf, cache key with code hash, smoke .hea paths, constraints.txt, API 503 for unreadable state + state.py 0644, train -> <out>/web, tests for state.py/download CLI, UI honesty texts (201/202 same person, reference-peak segmentation, detector claim, layer count, gallery counts), legible mobile Mermaid diagrams.",
+      "decisions": [
+        "rpeaks: re-learn thresholds on the next 2 s of the integrated signal after max(2 s, 1.66 RR) without QRS, only if max/median > 10 (QRS bursts >= 36x on record 100, white noise 3-6x) so sinus pauses do not pull thresholds to the noise floor; search-back retried afterwards",
+        "qrs_width_ms: threshold max(5% of dilated |deriv| peak, 4x PR-segment median |deriv|) instead of 15%; record 100 N median 72 ms (was 50)",
+        "local_rr kept causal incl. current beat (contract unchanged); only docs/UI wording corrected",
+        "class_weights capped at 50x majority-class weight (max_ratio kwarg, None = old behaviour); summary() adds macro_f1_nsvf",
+        "beat cache meta includes SHA-256 of loader/filters/rpeaks/segmentation source",
+        "artifacts/web kept as API fallback and now filled by pipeline train (<out>/web)",
+        "constraints.txt = pip freeze of tested venv, used by make install; CPU torch wheel via PIP_EXTRA (not verified here: download.pytorch.org unreachable)"
+      ],
+      "files": [
+        "INTERFACES.md",
+        "MASTERPLAN.md",
+        "Makefile",
+        "README.md",
+        "constraints.txt",
+        "docs/screenshots/detail-beat-gallery-dark.png",
+        "docs/screenshots/detail-beat-gallery.png",
+        "docs/screenshots/overview-light.png",
+        "docs/screenshots/process-light-desktop-full.png",
+        "docs/screenshots/process-mobile-diagram.png",
+        "scripts/state.py",
+        "src/ekg/api/server.py",
+        "src/ekg/evaluation/metrics.py",
+        "src/ekg/models/tree_baseline.py",
+        "src/ekg/pipeline.py",
+        "src/ekg/preprocessing/rpeaks.py",
+        "src/ekg/training/train.py",
+        "tests/test_api.py",
+        "tests/test_metrics.py",
+        "tests/test_pipeline.py",
+        "tests/test_rpeaks.py",
+        "tests/test_state_script.py",
+        "tests/test_train.py",
+        "tests/test_tree.py",
+        "web/src/components/beat-gallery.js",
+        "web/src/diagrams/index.js",
+        "web/src/process/steps.js",
+        "web/src/views/overview.js"
+      ],
+      "tests": [
+        ".venv/bin/pytest -q: 199 passed (14 s)",
+        "python -m ekg.pipeline demo: ok, record 100 TP=2273 FP=0 FN=0",
+        "python -m ekg.pipeline smoke --record data/sample/100.hea: ok",
+        "cd web && npm run build: ok",
+        "playwright #/process light+dark 1440px and 375px: 0 console errors, no page h-scroll, mobile Mermaid text 11.9 px (was 6-9 px)"
+      ],
+      "history": [
+        {
+          "t": "2026-11-01T23:32:44+00:00",
+          "agent": "review-qa-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-01T23:45:27+00:00",
+          "agent": "review-qa-agent",
+          "event": "note",
+          "note": "Contract change ekg.training.train.class_weights: new kwarg max_ratio=50.0 (default caps rare-class weights at 50x the majority-class weight; max_ratio=None = old pure inverse frequency). INTERFACES.md updated."
+        },
+        {
+          "t": "2026-11-01T23:45:27+00:00",
+          "agent": "review-qa-agent",
+          "event": "note",
+          "note": "Contract extension ekg.evaluation.metrics.summary: additional key macro_f1_nsvf (macro-F1 over N/S/V/F, Q excluded); existing keys unchanged. pipeline train now writes web JSONs to <out>/web (= artifacts/web, the API fallback) instead of <out>/; model.pt stays in <out>/. metrics.json config gains library_versions and preprocessing_fingerprint."
+        },
+        {
+          "t": "2026-11-01T23:45:27+00:00",
+          "agent": "review-qa-agent",
+          "event": "note",
+          "note": "Feature semantics changed: qrs_width_ms now includes Q/S waves (5% derivative threshold + PR-noise floor; record 100 N median 72 ms instead of 50 ms). Pan-Tompkins got a threshold re-learning step (documented in rpeaks.py). Beat caches are keyed by a source hash of loader/filters/rpeaks/segmentation, so old .npz caches are rebuilt."
+        },
+        {
+          "t": "2026-11-01T23:45:40+00:00",
+          "agent": "review-qa-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-01T23:32:44+00:00",
+      "finished_at": "2026-11-01T23:45:40+00:00"
+    },
+    {
+      "id": "full-training",
+      "block": "B3 Evaluierung",
+      "title": "Training/Evaluation auf vollständiger MIT-BIH (DS1->DS2)",
+      "status": "blocked",
+      "agent": null,
+      "owns": [
+        "artifacts/",
+        "web/public/data/metrics.json"
+      ],
+      "depends_on": [
+        "pipeline-integration"
+      ],
+      "summary": null,
+      "decisions": [],
+      "files": [],
+      "tests": [],
+      "history": [],
+      "last_error": "physionet.org nicht erreichbar (Netzwerk-Policy der Umgebung). Freischalten, dann `make data && make train`."
+    }
+  ]
+}

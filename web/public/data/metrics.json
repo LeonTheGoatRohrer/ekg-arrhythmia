@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "status": "pending",
+  "reason": "Die vollständige MIT-BIH Arrhythmia Database (48 Records, davon 44 in DS1/DS2) ist nicht verfügbar: physionet.org ist in dieser Container-Umgebung durch die Netzwerk-Policy gesperrt. Ohne DS1 (Training) und DS2 (Test) werden keine Modell-Kennzahlen berechnet. Nachholen: physionet.org freischalten (oder lokal ausführen), dann `make data` (python scripts/download_mitdb.py --data-dir data/mitdb) und `make train` (python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data).",
+  "how_to": [
+    "make data   # python scripts/download_mitdb.py --data-dir data/mitdb",
+    "make train  # python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data"
+  ],
+  "dataset": "MIT-BIH Arrhythmia Database",
+  "split": "DS1 → DS2 (de Chazal et al. 2004, inter-patient)",
+  "cnn": null,
+  "tree": null,
+  "generated_at": "2026-11-01T23:41:47+00:00"
+}

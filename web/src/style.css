@@ -1,0 +1,469 @@
+@import "tailwindcss";
+
+/* Dark mode is driven by the `dark` class on <html> (see src/lib/theme.js). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------------
+   Design tokens (contract: INTERFACES.md). Charts and diagrams read these
+   via var(--c-…) / getComputedStyle, so they must stay in sync for both modes.
+   ------------------------------------------------------------------------ */
+:root {
+  --c-bg: #f8fafc;
+  --c-surface: #ffffff;
+  --c-surface-2: #f1f5f9;
+  --c-border: #e2e8f0;
+  --c-text: #0f172a;
+  --c-muted: #64748b;
+  --c-accent: #0d9488;
+  --c-accent-2: #6366f1;
+  --c-raw: #94a3b8;
+  --c-filtered: #e11d48;
+  --c-peak: #d97706;
+  --c-cls-N: #64748b;
+  --c-cls-S: #6366f1;
+  --c-cls-V: #e11d48;
+  --c-cls-F: #d97706;
+  --c-cls-Q: #0d9488;
+  --c-grid: #fde2e4;
+
+  /* Shell-only helpers (derived, not part of the chart contract). */
+  --c-shadow: 15 23 42;
+  --c-ok: #059669;
+  --c-warn: #b45309;
+  --c-danger: #e11d48;
+  --c-header: rgb(248 250 252 / 0.92);
+  color-scheme: light;
+}
+
+.dark {
+  --c-bg: #0b1120;
+  --c-surface: #111827;
+  --c-surface-2: #1e293b;
+  --c-border: #273449;
+  --c-text: #e2e8f0;
+  --c-muted: #94a3b8;
+  --c-accent: #2dd4bf;
+  --c-accent-2: #818cf8;
+  --c-raw: #64748b;
+  --c-filtered: #fb7185;
+  --c-peak: #fbbf24;
+  --c-cls-N: #94a3b8;
+  --c-cls-S: #818cf8;
+  --c-cls-V: #fb7185;
+  --c-cls-F: #fbbf24;
+  --c-cls-Q: #2dd4bf;
+  --c-grid: #3b1d27;
+
+  --c-shadow: 0 0 0;
+  --c-ok: #34d399;
+  --c-warn: #fbbf24;
+  --c-danger: #fb7185;
+  --c-header: rgb(11 17 32 / 0.9);
+  color-scheme: dark;
+}
+
+/* Tailwind theme: fonts + token-backed colour utilities (bg-surface, text-muted, border-line …). */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-border);
+  --color-fg: var(--c-text);
+  --color-muted: var(--c-muted);
+  --color-accent: var(--c-accent);
+  --color-accent-2: var(--c-accent-2);
+  --color-ok: var(--c-ok);
+  --color-warn: var(--c-warn);
+  --color-danger: var(--c-danger);
+  --color-cls-n: var(--c-cls-N);
+  --color-cls-s: var(--c-cls-S);
+  --color-cls-v: var(--c-cls-V);
+  --color-cls-f: var(--c-cls-F);
+  --color-cls-q: var(--c-cls-Q);
+}
+
+/* ------------------------------------------------------------------------ */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--c-accent) 25%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  code, kbd, pre, samp {
+    font-family: var(--font-mono);
+    font-feature-settings: normal;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -3rem;
+    z-index: 100;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--c-surface);
+    color: var(--c-text);
+    border: 1px solid var(--c-border);
+    font-size: 0.875rem;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus { top: 0.75rem; }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Cards: 1px border, quiet shadow. */
+  .card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 0.875rem;
+    box-shadow: 0 1px 2px rgb(var(--c-shadow) / 0.04), 0 1px 1px rgb(var(--c-shadow) / 0.02);
+  }
+  .dark .card { box-shadow: 0 1px 0 rgb(255 255 255 / 0.02) inset; }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--c-border);
+    min-width: 0;
+  }
+
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-muted);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 100%;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+    background: var(--c-surface-2);
+    color: var(--c-muted);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+  .chip-mono {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding: 0 1rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--c-text);
+    color: var(--c-bg);
+  }
+  .btn-primary:hover { background: color-mix(in srgb, var(--c-text) 86%, var(--c-bg)); }
+  .btn-ghost {
+    background: var(--c-surface);
+    border-color: var(--c-border);
+    color: var(--c-text);
+  }
+  .btn-ghost:hover { background: var(--c-surface-2); }
+  .btn-sm { height: 2rem; padding: 0 0.75rem; font-size: 0.8125rem; border-radius: 0.5rem; }
+
+  /* Header navigation links. */
+  .nav-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 2.25rem;
+    padding: 0 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--c-muted);
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .nav-link:hover { color: var(--c-text); background: var(--c-surface-2); }
+  .nav-link[aria-current="page"] { color: var(--c-text); background: var(--c-surface-2); }
+
+  /* Segmented theme control. */
+  .seg {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--c-border);
+    border-radius: 0.625rem;
+    background: var(--c-surface);
+  }
+  .seg button {
+    display: inline-grid;
+    place-items: center;
+    width: 1.875rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    color: var(--c-muted);
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .seg button:hover { color: var(--c-text); }
+  .seg button[aria-checked="true"] {
+    background: var(--c-surface-2);
+    color: var(--c-text);
+    box-shadow: 0 0 0 1px var(--c-border) inset;
+  }
+
+  /* Status pills (planned / in_progress / done / failed / blocked). */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    border: 1px solid color-mix(in srgb, var(--pill) 30%, transparent);
+    background: color-mix(in srgb, var(--pill) 10%, transparent);
+    color: var(--pill);
+  }
+  .pill::before {
+    content: "";
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .pill-planned { --pill: var(--c-muted); }
+  .pill-in_progress { --pill: var(--c-accent-2); }
+  .pill-in_progress::before { animation: pulse-dot 1.6s ease-in-out infinite; }
+  .pill-done { --pill: var(--c-ok); }
+  .pill-failed { --pill: var(--c-danger); }
+  .pill-blocked { --pill: var(--c-warn); }
+
+  /* Notice / banner. */
+  .notice {
+    --tone: var(--c-warn);
+    display: flex;
+    gap: 0.875rem;
+    padding: 1rem 1.125rem;
+    border-radius: 0.875rem;
+    border: 1px solid color-mix(in srgb, var(--tone) 35%, var(--c-border));
+    background: color-mix(in srgb, var(--tone) 6%, var(--c-surface));
+  }
+  .notice-ok { --tone: var(--c-ok); }
+  .notice-info { --tone: var(--c-accent-2); }
+  .notice-icon { color: var(--tone); flex: none; margin-top: 0.125rem; }
+
+  /* Progress bar. */
+  .bar {
+    position: relative;
+    height: 0.375rem;
+    border-radius: 999px;
+    background: var(--c-surface-2);
+    overflow: hidden;
+  }
+  .bar > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--c-accent);
+    transition: width 0.6s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* Containers for externally rendered diagrams / panels. */
+  .diagram-frame {
+    position: relative;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 1.25rem;
+    min-height: 8rem;
+  }
+  .diagram-frame svg { max-width: 100%; height: auto; margin-inline: auto; display: block; }
+  .diagram-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0 1rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--c-muted);
+  }
+  .diagram-hint.hidden { display: none; }
+  .panel-frame {
+    position: relative;
+    padding: 1rem;
+    min-height: 8rem;
+    min-width: 0;
+  }
+  .ecg-paper {
+    background-color: var(--c-surface);
+    background-image:
+      linear-gradient(var(--c-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+    background-size: 12px 12px;
+    background-position: -1px -1px;
+  }
+
+  /* Skeleton while lazy content loads. */
+  .skeleton {
+    border-radius: 0.5rem;
+    background: linear-gradient(90deg, var(--c-surface-2) 0%, color-mix(in srgb, var(--c-surface-2) 55%, var(--c-surface)) 50%, var(--c-surface-2) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  /* Step body copy (HTML authored in src/process/steps.js). */
+  .prose-step { color: var(--c-text); font-size: 0.9375rem; line-height: 1.7; }
+  .prose-step > * + * { margin-top: 0.875rem; }
+  .prose-step p { color: color-mix(in srgb, var(--c-text) 86%, var(--c-muted)); }
+  .prose-step strong { font-weight: 600; color: var(--c-text); }
+  .prose-step a { color: var(--c-accent); text-decoration: underline; text-underline-offset: 3px; }
+  .prose-step code {
+    font-size: 0.8125em;
+    padding: 0.1em 0.35em;
+    border-radius: 0.375rem;
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    overflow-wrap: anywhere;
+  }
+  .prose-step pre {
+    overflow-x: auto;
+    padding: 0.875rem 1rem;
+    border-radius: 0.625rem;
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+  .prose-step pre code { padding: 0; border: 0; background: none; font-size: inherit; }
+  .prose-step ul { list-style: disc; padding-left: 1.25rem; }
+  .prose-step ol { list-style: decimal; padding-left: 1.25rem; }
+  .prose-step li + li { margin-top: 0.25rem; }
+  .prose-step table { width: 100%; border-collapse: collapse; font-size: 0.875rem; display: block; overflow-x: auto; }
+  .prose-step th, .prose-step td { border-bottom: 1px solid var(--c-border); padding: 0.375rem 0.625rem; text-align: left; }
+  .prose-step th { font-weight: 600; color: var(--c-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Process table of contents. */
+  .toc-link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.4375rem 0.625rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    text-align: left;
+    color: var(--c-muted);
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .toc-link:hover { color: var(--c-text); background: var(--c-surface-2); }
+  .toc-link .toc-num {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 999px;
+    border: 1px solid var(--c-border);
+    background: var(--c-surface);
+    font-size: 0.625rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    transition: all 0.15s ease;
+  }
+  .toc-link[aria-current="step"] { color: var(--c-text); background: var(--c-surface-2); }
+  .toc-link[aria-current="step"] .toc-num {
+    border-color: var(--c-accent);
+    background: var(--c-accent);
+    color: var(--c-surface);
+  }
+
+  /* Phase overview (Process intro). */
+  .phase-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--c-border);
+    border-radius: 0.75rem;
+    background: var(--c-surface);
+    text-align: left;
+    transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+  }
+  .phase-link:hover { border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-border)); background: var(--c-surface-2); }
+  .phase-link:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+  .phase-dot {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  }
+
+  .details-summary { cursor: pointer; list-style: none; }
+  .details-summary::-webkit-details-marker { display: none; }
+  details[open] > .details-summary .chev { transform: rotate(90deg); }
+  .chev { transition: transform 0.15s ease; }
+
+  .fade-in { animation: fade-in 0.35s ease both; }
+}
+
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
