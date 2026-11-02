@@ -174,7 +174,8 @@ flowchart LR
   honesty of the claims. A fix agent reproduced and fixed all 17 findings, e.g. threshold recovery
   in the Pan-Tompkins detector, the QRS width, capped class weights and a cache key with a code
   hash.
-- **Wave 4:** physionet.org was blocked in the cloud environment, so there were no metrics there.
+- **Wave 4:** physionet.org was not reachable from the cloud environment, so no model results
+  were produced there.
   Full training then ran locally on Windows, including a port of the file lock.
 
 ### Rules for working together

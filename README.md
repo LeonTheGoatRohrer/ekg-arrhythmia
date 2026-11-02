@@ -182,8 +182,8 @@ flowchart LR
   Ehrlichkeit der Aussagen. Ein Fix-Agent hat alle 17 Befunde reproduziert und behoben, z. B.
   die Schwellen-Erholung im Pan-Tompkins-Detektor, die QRS-Breite, gedeckelte Klassengewichte und
   einen Cache-Schlüssel mit Code-Hash.
-- **Welle 4:** In der Cloud-Umgebung war physionet.org gesperrt, deshalb gab es dort keine
-  Kennzahlen. Das Volltraining lief danach lokal unter Windows, inklusive Portierung des
+- **Welle 4:** Aus der Cloud-Umgebung war physionet.org nicht erreichbar, deshalb entstanden dort
+  noch keine Modellergebnisse. Das Volltraining lief danach lokal unter Windows, inklusive Portierung des
   Datei-Locks.
 
 ### Regeln für die Zusammenarbeit
