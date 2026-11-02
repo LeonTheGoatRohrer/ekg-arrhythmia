@@ -6,12 +6,13 @@ import {
   svg, h, esc, fmt, clamp, makeRoot, createTooltip, ttRow, observeWidth, listeners,
   isPending, renderMissingExport, note, tile, chip,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const JOINABLE = new Set(['BatchNorm1d', 'BatchNorm2d', 'LayerNorm', 'ReLU', 'LeakyReLU', 'GELU', 'ELU', 'Sigmoid', 'Tanh', 'Dropout', 'Flatten', 'Softmax']);
 const KIND = (type) => {
-  if (/Conv/i.test(type)) return { color: 'var(--c-accent)', tag: 'Faltung' };
-  if (/Linear/i.test(type)) return { color: 'var(--c-accent-2)', tag: 'Dicht' };
-  if (/Input/i.test(type)) return { color: 'var(--c-muted)', tag: 'Eingang' };
+  if (/Conv/i.test(type)) return { color: 'var(--c-accent)', tag: tr('Faltung', 'Convolution') };
+  if (/Linear/i.test(type)) return { color: 'var(--c-accent-2)', tag: tr('Dicht', 'Dense') };
+  if (/Input/i.test(type)) return { color: 'var(--c-muted)', tag: tr('Eingang', 'Input') };
   if (/Concat|Cat/i.test(type)) return { color: 'var(--c-peak)', tag: 'Fusion' };
   if (/Pool/i.test(type)) return { color: 'var(--c-filtered)', tag: 'Pooling' };
   return { color: 'var(--c-muted)', tag: type };
@@ -57,17 +58,17 @@ export function groupLayers(layers) {
 function titleOf(g, idx, all) {
   const types = g.layers.map((l) => l.type);
   const n = g.layers[0].name || '';
-  if (types.includes('Input')) return /rr/i.test(n) ? 'RR-Eingang' : 'Beat-Eingang';
+  if (types.includes('Input')) return /rr/i.test(n) ? tr('RR-Eingang', 'RR input') : tr('Beat-Eingang', 'Beat input');
   if (types.some((t) => /Conv/.test(t))) {
     const k = all.filter((x, i) => i <= idx && x.layers.some((l) => /Conv/.test(l.type))).length;
-    return `Conv-Block ${g.num ?? k}`;
+    return `${tr('Conv-Block', 'Conv block')} ${g.num ?? k}`;
   }
   if (types.some((t) => /Concat/.test(t))) return 'Fusion (Concat)';
   if (types.some((t) => /AdaptiveAvgPool|GlobalAvg/.test(t))) return 'Global Average Pooling';
-  if (g.branch) return 'RR-Zweig';
+  if (g.branch) return tr('RR-Zweig', 'RR branch');
   if (/^head/.test(g.scope) || /^classifier|^fc/.test(g.scope)) {
     const isLast = all.indexOf(g) === all.length - 1;
-    return isLast ? 'Ausgabe (Logits)' : 'Dichte Schicht';
+    return isLast ? tr('Ausgabe (Logits)', 'Output (logits)') : tr('Dichte Schicht', 'Dense layer');
   }
   return g.layers[0].name;
 }
@@ -77,13 +78,13 @@ const shapeStr = (shape) => {
   const dims = shape.length > 1 ? shape.slice(1) : shape; // drop batch dim
   return dims.join(' × ');
 };
-const shapeHint = (shape) => (Array.isArray(shape) && shape.length === 3 ? 'Kanäle × Länge' : Array.isArray(shape) && shape.length === 2 ? 'Merkmale' : '');
+const shapeHint = (shape) => (Array.isArray(shape) && shape.length === 3 ? tr('Kanäle × Länge', 'channels × length') : Array.isArray(shape) && shape.length === 2 ? tr('Merkmale', 'features') : '');
 const pretty = (s) => String(s ?? '').replace(/->/g, '→').replace(/, padding=same/, '');
 
 export function renderArchitecture(container, data, opts = {}) {
   const layers = Array.isArray(data?.layers) ? data.layers : Array.isArray(data) ? data : [];
   if (isPending(data) || !layers.length) {
-    return renderMissingExport(container, opts, { title: 'Architektur noch nicht exportiert', file: 'architecture.json', iconName: 'layers', name: 'architecture' });
+    return renderMissingExport(container, opts, { title: tr('Architektur noch nicht exportiert', 'Architecture not exported yet'), file: 'architecture.json', iconName: 'layers', name: 'architecture' });
   }
   const groups = groupLayers(layers);
   groups.forEach((g, i) => { g.title = titleOf(g, i, groups); g.kind = KIND(g.main.type); });
@@ -93,26 +94,26 @@ export function renderArchitecture(container, data, opts = {}) {
   const fusionIdx = main.findIndex((g) => g.layers.some((l) => /Concat/.test(l.type)));
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Schichten-Architektur des Netzes', name: 'architecture' });
+  const root = makeRoot(container, { label: tr('Schichten-Architektur des Netzes', 'Layer architecture of the network'), name: 'architecture' });
   const tiles = h('div', { class: 'ekc-tiles', style: { marginBottom: '12px' } }, root);
-  tile(tiles, { label: 'Parameter gesamt', value: fmt(total), sub: 'trainierbar' });
-  tile(tiles, { label: 'Schichten', value: fmt(layers.filter((l) => l.type !== 'Input').length), sub: `${groups.length} Blöcke` });
+  tile(tiles, { label: tr('Parameter gesamt', 'Total parameters'), value: fmt(total), sub: tr('trainierbar', 'trainable') });
+  tile(tiles, { label: tr('Schichten', 'Layers'), value: fmt(layers.filter((l) => l.type !== 'Input').length), sub: `${groups.length} ${tr('Blöcke', 'blocks')}` });
   const conv = layers.filter((l) => /Conv/.test(l.type)).length;
-  tile(tiles, { label: 'Faltungen', value: fmt(conv), sub: 'Conv1d' });
+  tile(tiles, { label: tr('Faltungen', 'Convolutions'), value: fmt(conv), sub: 'Conv1d' });
   const inShape = layers.find((l) => l.type === 'Input');
   const outShape = layers[layers.length - 1]?.output_shape;
-  tile(tiles, { label: 'Ein → Aus', value: `${shapeStr(inShape?.output_shape).split(' × ').pop()} → ${shapeStr(outShape)}`, sub: 'Samples → Klassen' });
+  tile(tiles, { label: tr('Ein → Aus', 'In → out'), value: `${shapeStr(inShape?.output_shape).split(' × ').pop()} → ${shapeStr(outShape)}`, sub: tr('Samples → Klassen', 'samples → classes') });
 
   // null = automatic: fit to width when the chain only needs mild down-scaling (>= 62 %),
   // so wide screens show the whole network incl. RR branch; narrow screens scroll instead.
   let fitUser = null;
   let lastAvail = 0;
   const bar = h('div', { class: 'ekc-toolbar' }, root);
-  h('span', { class: 'ekc-meta', text: 'Datenfluss von links nach rechts · Hover/Fokus für Details' }, bar);
+  h('span', { class: 'ekc-meta', text: tr('Datenfluss von links nach rechts · Hover/Fokus für Details', 'Data flows left to right · hover/focus for details') }, bar);
   h('span', { class: 'ekc-spacer' }, bar);
-  const fitBtn = chip(bar, { label: 'An Breite anpassen', pressed: false, onToggle: (v) => { fitUser = v; draw(lastAvail); updateFades(); } });
+  const fitBtn = chip(bar, { label: tr('An Breite anpassen', 'Fit to width'), pressed: false, onToggle: (v) => { fitUser = v; draw(lastAvail); updateFades(); } });
   const frame = h('div', { style: { position: 'relative' } }, root);
-  const scroller = h('div', { class: 'ekc-scroll', tabindex: 0, role: 'region', 'aria-label': 'Schichtenkette (horizontal scrollbar)', style: { borderRadius: '12px', border: '1px solid var(--c-border)', background: 'var(--c-surface-2)' } }, frame);
+  const scroller = h('div', { class: 'ekc-scroll', tabindex: 0, role: 'region', 'aria-label': tr('Schichtenkette (horizontal scrollbar)', 'Layer chain (scrolls horizontally)'), style: { borderRadius: '12px', border: '1px solid var(--c-border)', background: 'var(--c-surface-2)' } }, frame);
   const fadeStyle = (side) => ({ position: 'absolute', top: '1px', bottom: '1px', [side]: '1px', width: '36px', pointerEvents: 'none', borderRadius: side === 'left' ? '12px 0 0 12px' : '0 12px 12px 0', background: `linear-gradient(to ${side === 'left' ? 'right' : 'left'}, var(--c-surface-2), transparent)`, opacity: '0', transition: 'opacity .2s' });
   const fadeL = h('div', { 'aria-hidden': 'true', style: fadeStyle('left') }, frame);
   const fadeR = h('div', { 'aria-hidden': 'true', style: fadeStyle('right') }, frame);
@@ -122,13 +123,15 @@ export function renderArchitecture(container, data, opts = {}) {
     fadeR.style.opacity = max - scroller.scrollLeft > 4 ? '1' : '0';
   };
   scroller.addEventListener('scroll', updateFades, { passive: true });
-  const s = svg('svg', { role: 'list', 'aria-label': `Netzwerk mit ${groups.length} Blöcken und ${fmt(total)} Parametern` }, scroller);
+  const s = svg('svg', { role: 'list', 'aria-label': tr(`Netzwerk mit ${groups.length} Blöcken und ${fmt(total)} Parametern`, `Network with ${groups.length} blocks and ${fmt(total)} parameters`) }, scroller);
   const tip = createTooltip(root);
   const legend = h('div', { class: 'ekc-legend', style: { marginTop: '10px' } }, root);
   const kinds = new Map();
   for (const g of groups) kinds.set(g.kind.tag, g.kind.color);
   for (const [tag, color] of kinds) h('span', { class: 'ekc-legend-item', html: `<i class="ekc-dot" style="--sw:${color}"></i>${esc(tag)}` }, legend);
-  note(root, 'Kartenbreite und Balken wachsen mit log(Parameter). Die Ausgabeform ist ohne Batch-Dimension angegeben. Der RR-Zweig verarbeitet die 4 RR-Intervall-Merkmale und wird vor dem Klassifikationskopf mit den CNN-Merkmalen fusioniert.');
+  note(root, tr(
+    'Kartenbreite und Balken wachsen mit log(Parameter). Die Ausgabeform ist ohne Batch-Dimension angegeben. Der RR-Zweig verarbeitet die 4 RR-Intervall-Merkmale und wird vor dem Klassifikationskopf mit den CNN-Merkmalen fusioniert.',
+    'Card width and bars grow with log(parameters). Output shapes are given without the batch dimension. The RR branch processes the 4 RR interval features and is fused with the CNN features before the classification head.'));
 
   const maxLog = Math.log10(1 + Math.max(...groups.map((g) => g.params), 1));
   const CH = 7.2; // approx px per char at 11.5px
@@ -205,7 +208,7 @@ export function renderArchitecture(container, data, opts = {}) {
       const last = pos.get(branch[branch.length - 1]);
       const fusion = pos.get(main[fusionIdx] || main[main.length - 1]);
       arrow(last.x + last.w + 3, last.y + 30, fusion.x + fusion.w / 2, fusion.y + fusion.h + 3, true);
-      svg('text', { x: last.x, y: last.y - 10, class: 'ekc-sublabel', text: 'Hilfszweig: RR-Intervalle' }, cg);
+      svg('text', { x: last.x, y: last.y - 10, class: 'ekc-sublabel', text: tr('Hilfszweig: RR-Intervalle', 'Auxiliary branch: RR intervals') }, cg);
     }
 
     // cards
@@ -214,7 +217,7 @@ export function renderArchitecture(container, data, opts = {}) {
       if (!p) return;
       const card = svg('g', {
         transform: `translate(${p.x},${p.y})`, tabindex: 0, role: 'listitem', class: 'ekc-arch-card',
-        'aria-label': `${g.title}: ${g.layers.map((l) => l.type).join(', ')}; Ausgabe ${shapeStr(g.out)}; ${fmt(g.params)} Parameter`,
+        'aria-label': `${g.title}: ${g.layers.map((l) => l.type).join(', ')}; ${tr('Ausgabe', 'output')} ${shapeStr(g.out)}; ${fmt(g.params)} ${tr('Parameter', 'parameters')}`,
         style: { cursor: 'default' },
       }, gAll);
       svg('rect', { x: -3, y: -3, width: p.w + 6, height: p.h + 6, rx: 13, class: 'ekc-focus' }, card);
@@ -239,12 +242,12 @@ export function renderArchitecture(container, data, opts = {}) {
       const fy = p.h - 24;
       svg('line', { x1: 10, x2: p.w - 10, y1: fy - 6, y2: fy - 6, style: { stroke: 'var(--c-border)' } }, card);
       svg('text', { x: 14, y: fy + 7, class: 'ekc-num', style: { fontSize: '11px', fontWeight: 600, fill: 'var(--c-text)', fontFamily: 'var(--font-mono, ui-monospace, monospace)' }, text: `→ ${shapeStr(g.out)}` }, card);
-      svg('text', { x: p.w - 12, y: fy + 7, 'text-anchor': 'end', class: 'ekc-num', style: { fontSize: '10.5px', fill: 'var(--c-muted)' }, text: g.params ? `${fmt(g.params)} P.` : '0 P.' }, card);
+      svg('text', { x: p.w - 12, y: fy + 7, 'text-anchor': 'end', class: 'ekc-num', style: { fontSize: '10.5px', fill: 'var(--c-muted)' }, text: `${g.params ? fmt(g.params) : '0'} ${tr('P.', 'params')}` }, card);
       const bw = (p.w - 24) * (Math.log10(1 + g.params) / maxLog);
       svg('rect', { x: 12, y: fy + 13, width: p.w - 24, height: 3, rx: 1.5, style: { fill: 'var(--c-surface-2)' } }, card);
       if (bw > 0) svg('rect', { x: 12, y: fy + 13, width: bw, height: 3, rx: 1.5, style: { fill: g.kind.color, opacity: 0.85 } }, card);
 
-      const tt = () => `<div class="ekc-tt-title">${esc(g.title)}</div>${g.layers.map((l) => ttRow(`${l.type}${l.detail && !/^max/.test(l.detail) ? ` · ${pretty(l.detail).slice(0, 40)}` : ''}`, `${fmt(l.params)} P.`)).join('')}${ttRow('Ausgabe', `${shapeStr(g.out)}${shapeHint(g.out) ? ` (${shapeHint(g.out)})` : ''}`)}${ttRow('Anteil', `${fmt((g.params / (total || 1)) * 100, 1)} %`)}`;
+      const tt = () => `<div class="ekc-tt-title">${esc(g.title)}</div>${g.layers.map((l) => ttRow(`${l.type}${l.detail && !/^max/.test(l.detail) ? ` · ${pretty(l.detail).slice(0, 40)}` : ''}`, `${fmt(l.params)} ${tr('P.', 'params')}`)).join('')}${ttRow(tr('Ausgabe', 'Output'), `${shapeStr(g.out)}${shapeHint(g.out) ? ` (${shapeHint(g.out)})` : ''}`)}${ttRow(tr('Anteil', 'Share'), `${fmt((g.params / (total || 1)) * 100, 1)} %`)}`;
       const enter = () => { bgRect.style.stroke = g.kind.color; };
       const leave = () => { bgRect.style.stroke = 'var(--c-border)'; tip.hide(); };
       ls.on(card, 'pointerenter', enter);

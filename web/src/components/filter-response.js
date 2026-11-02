@@ -5,6 +5,7 @@ import {
   svg, h, fmt, linear, logScale, clamp, axisLeft, makeRoot, createTooltip, ttRow,
   observeWidth, listeners, chip, isPending, renderMissingExport, nextId, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const M = { top: 30, right: 18, bottom: 44, left: 54 };
 const Y_MIN = -60;
@@ -15,7 +16,7 @@ export function renderFilterResponse(container, data, opts = {}) {
   const g1 = Array.isArray(data?.gain_db) ? data.gain_db : [];
   const g2 = Array.isArray(data?.gain_db_zero_phase) ? data.gain_db_zero_phase : [];
   if (isPending(data) || freqs.length < 2 || (!g1.length && !g2.length)) {
-    return renderMissingExport(container, opts, { title: 'Frequenzgang noch nicht verfügbar', file: 'filter_response.json', iconName: 'wave', name: 'filter-response' });
+    return renderMissingExport(container, opts, { title: tr('Frequenzgang noch nicht verfügbar', 'Frequency response not available yet'), file: 'filter_response.json', iconName: 'wave', name: 'filter-response' });
   }
 
   const low = Number(data.low);
@@ -27,30 +28,36 @@ export function renderFilterResponse(container, data, opts = {}) {
   const fMin = Math.max(freqs[pts[0]], 0.05);
   const fMax = freqs[pts[pts.length - 1]];
   const series = [
-    g2.length && { key: 'zp', label: 'Effektiv (filtfilt, nullphasig)', arr: g2, color: 'var(--c-filtered)', width: 2.2, dash: null },
-    g1.length && { key: 'ow', label: `Butterworth einfach${order ? ` (Ordnung ${order})` : ''}`, arr: g1, color: 'var(--c-accent-2)', width: 1.5, dash: '5 4' },
+    g2.length && { key: 'zp', label: tr('Effektiv (filtfilt, nullphasig)', 'Effective (filtfilt, zero-phase)'), arr: g2, color: 'var(--c-filtered)', width: 2.2, dash: null },
+    g1.length && { key: 'ow', label: tr(`Butterworth einfach${order ? ` (Ordnung ${order})` : ''}`, `Butterworth single pass${order ? ` (order ${order})` : ''}`), arr: g1, color: 'var(--c-accent-2)', width: 1.5, dash: '5 4' },
   ].filter(Boolean);
   const visible = Object.fromEntries(series.map((s) => [s.key, true]));
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Frequenzgang des Bandpass-Filters', name: 'filter-response' });
+  const root = makeRoot(container, { label: tr('Frequenzgang des Bandpass-Filters', 'Frequency response of the band-pass filter'), name: 'filter-response' });
   const bar = h('div', { class: 'ekc-toolbar' }, root);
   for (const s of series) chip(bar, { label: s.label, color: s.color, onToggle: (v) => { visible[s.key] = v; draw(); } });
   h('span', { class: 'ekc-spacer' }, bar);
-  if (Number.isFinite(low) && Number.isFinite(high)) h('span', { class: 'ekc-badge ekc-num', text: `Durchlass ${fmt(low, 1)}–${fmt(high, 0)} Hz` }, bar);
+  if (Number.isFinite(low) && Number.isFinite(high)) h('span', { class: 'ekc-badge ekc-num', text: tr(`Durchlass ${fmt(low, 1)}–${fmt(high, 0)} Hz`, `Passband ${fmt(low, 1)}–${fmt(high, 0)} Hz`) }, bar);
 
   const wrap = h('div', { style: { position: 'relative' } }, root);
   const clipId = nextId('fr-clip');
   const s = svg('svg', {
     role: 'img',
-    'aria-label': `Betragsgang des Bandpass-Filters in dB über der Frequenz (logarithmisch). Grenzfrequenzen ${fmt(low, 1)} Hz und ${fmt(high, 0)} Hz.`,
+    'aria-label': tr(
+      `Betragsgang des Bandpass-Filters in dB über der Frequenz (logarithmisch). Grenzfrequenzen ${fmt(low, 1)} Hz und ${fmt(high, 0)} Hz.`,
+      `Magnitude response of the band-pass filter in dB over frequency (logarithmic). Cutoff frequencies ${fmt(low, 1)} Hz and ${fmt(high, 0)} Hz.`,
+    ),
   }, wrap);
   const clipRect = svg('rect', {}, svg('clipPath', { id: clipId }, svg('defs', {}, s)));
   const gMain = svg('g', {}, s);
   const gOver = svg('g', { 'pointer-events': 'none' }, s);
-  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': 'Frequenzgang. Pfeiltasten bewegen den Cursor.' }, s);
+  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': tr('Frequenzgang. Pfeiltasten bewegen den Cursor.', 'Frequency response. Arrow keys move the cursor.') }, s);
   const tip = createTooltip(root);
-  note(root, 'Butterworth-Filter haben an den Grenzfrequenzen −3 dB. Weil filtfilt vorwärts und rückwärts filtert, quadriert sich der Betrag: effektiv −6 dB an den Grenzen, dafür ohne Phasenverschiebung (R-Zacken bleiben zeitlich an ihrem Ort).');
+  note(root, tr(
+    'Butterworth-Filter haben an den Grenzfrequenzen −3 dB. Weil filtfilt vorwärts und rückwärts filtert, quadriert sich der Betrag: effektiv −6 dB an den Grenzen, dafür ohne Phasenverschiebung (R-Zacken bleiben zeitlich an ihrem Ort).',
+    'Butterworth filters are at −3 dB at the cutoff frequencies. Because filtfilt filters forward and backward, the magnitude is squared: effectively −6 dB at the cutoffs, but without phase shift (R peaks stay in place in time).',
+  ));
 
   let geo = null;
   let width = 0;
@@ -105,10 +112,10 @@ export function renderFilterResponse(container, data, opts = {}) {
       svg('text', { x: px, y: plot.y1 + 17, 'text-anchor': 'middle', class: 'ekc-tick', text: fmt(f, f < 0.1 ? 2 : f < 1 ? 1 : 0) }, ax);
     }
     svg('line', { x1: plot.x0, x2: plot.x1, y1: plot.y1, y2: plot.y1, class: 'ekc-axis-line' }, ax);
-    svg('text', { x: (plot.x0 + plot.x1) / 2, y: plot.y1 + 36, 'text-anchor': 'middle', class: 'ekc-axis-title', text: 'Frequenz (Hz, logarithmisch)' }, ax);
+    svg('text', { x: (plot.x0 + plot.x1) / 2, y: plot.y1 + 36, 'text-anchor': 'middle', class: 'ekc-axis-title', text: tr('Frequenz (Hz, logarithmisch)', 'Frequency (Hz, logarithmic)') }, ax);
     const yt = [];
     for (let v = 0; v >= Y_MIN; v -= 10) yt.push(v);
-    axisLeft(gMain, y, yt, plot.x0, { format: (v) => fmt(v), title: 'Verstärkung (dB)', titleX: 14, gridRight: plot.x1, line: false });
+    axisLeft(gMain, y, yt, plot.x0, { format: (v) => fmt(v), title: tr('Verstärkung (dB)', 'Gain (dB)'), titleX: 14, gridRight: plot.x1, line: false });
 
     // -3 dB line
     svg('line', { x1: plot.x0, x2: plot.x1, y1: y(-3), y2: y(-3), style: { stroke: 'var(--c-text)', strokeOpacity: 0.45, strokeDasharray: '6 4', strokeWidth: 1 } }, gMain);
@@ -120,7 +127,7 @@ export function renderFilterResponse(container, data, opts = {}) {
       svg('line', { x1: px, x2: px, y1: y(-3) + 8, y2: plot.y1, style: { stroke: 'var(--c-muted)', strokeDasharray: '1 3', strokeWidth: 1.2 } }, gMain);
       // Label sits left of the marker near the bottom: that region (stop band, below -50 dB)
       // is free of both curves, so the text never collides with them.
-      svg('text', { x: px - 5, y: plot.y1 - 8, 'text-anchor': 'end', class: 'ekc-sublabel', text: '60 Hz Netzbrummen' }, gMain);
+      svg('text', { x: px - 5, y: plot.y1 - 8, 'text-anchor': 'end', class: 'ekc-sublabel', text: tr('60 Hz Netzbrummen', '60 Hz mains hum') }, gMain);
     }
 
     // Curves
@@ -138,7 +145,7 @@ export function renderFilterResponse(container, data, opts = {}) {
     }
 
     // Cut-off markers
-    for (const [f, lab] of [[low, 'untere Grenzfrequenz'], [high, 'obere Grenzfrequenz']]) {
+    for (const [f, lab] of [[low, tr('untere Grenzfrequenz', 'lower cutoff frequency')], [high, tr('obere Grenzfrequenz', 'upper cutoff frequency')]]) {
       if (!Number.isFinite(f) || f < fMin || f > fMax) continue;
       const px = x(f);
       svg('line', { x1: px, x2: px, y1: plot.y0 - 4, y2: plot.y1, style: { stroke: 'var(--c-accent)', strokeWidth: 1.3, strokeDasharray: '4 3' } }, gMain);
@@ -166,7 +173,7 @@ export function renderFilterResponse(container, data, opts = {}) {
       if (!visible[sr.key]) continue;
       const v = sr.arr[i];
       if (v >= Y_MIN && v <= Y_MAX) svg('circle', { cx: px, cy: y(v), r: 3.4, style: { fill: sr.color, stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver);
-      rows.push(ttRow(sr.key === 'zp' ? 'Effektiv' : 'Einfach', v <= -199 ? '< −200 dB' : `${fmt(v, 1)} dB`, sr.color));
+      rows.push(ttRow(sr.key === 'zp' ? tr('Effektiv', 'Effective') : tr('Einfach', 'Single pass'), v <= -199 ? '< −200 dB' : `${fmt(v, 1)} dB`, sr.color));
     }
     const html = `<div class="ekc-tt-title">f = ${fmt(freqs[i], freqs[i] < 10 ? 2 : 1)} Hz</div>${rows.join('')}`;
     if (clientX != null) tip.show(html, clientX, clientY);

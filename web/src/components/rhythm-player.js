@@ -4,16 +4,20 @@
 
 import { esc, fmt, clamp, observeWidth, listeners, renderMissingExport, CLASS_LABELS, classColor } from './shared.js';
 import { icon, reducedMotion } from '../lib/dom.js';
+import { tr } from '../lib/i18n.js';
 
 const VIEW_S = 6; // seconds visible in the strip
 const H = 170, PAD_Y = 22, MINI_H = 34;
 
+// [de, en] pairs, resolved at render time via tr().
 const DESCRIPTION = {
-  N: 'Normaler Schlag: regelmäßiger Abstand, schmaler QRS-Komplex.',
-  S: 'Supraventrikulärer Extraschlag: kommt zu früh aus dem Vorhof, der QRS-Komplex bleibt meist schmal – verrät sich vor allem über den kurzen RR-Abstand.',
-  V: 'Ventrikulärer Extraschlag: entsteht in der Herzkammer, QRS breit und verformt, danach eine längere Pause.',
-  F: 'Fusionsschlag: normaler und ventrikulärer Schlag verschmelzen zu einer Mischform.',
-  Q: 'Nicht klassifizierbarer Schlag.',
+  N: ['Normaler Schlag: regelmäßiger Abstand, schmaler QRS-Komplex.', 'Normal beat: regular spacing, narrow QRS complex.'],
+  S: ['Supraventrikulärer Extraschlag: kommt zu früh aus dem Vorhof, der QRS-Komplex bleibt meist schmal – verrät sich vor allem über den kurzen RR-Abstand.',
+    'Supraventricular premature beat: arrives too early from the atria, the QRS complex usually stays narrow – it gives itself away mainly through the short RR interval.'],
+  V: ['Ventrikulärer Extraschlag: entsteht in der Herzkammer, QRS breit und verformt, danach eine längere Pause.',
+    'Ventricular premature beat: originates in the ventricle, wide and deformed QRS, followed by a longer pause.'],
+  F: ['Fusionsschlag: normaler und ventrikulärer Schlag verschmelzen zu einer Mischform.', 'Fusion beat: a normal and a ventricular beat merge into a hybrid shape.'],
+  Q: ['Nicht klassifizierbarer Schlag.', 'Unclassifiable beat.'],
 };
 
 function clockLabel(sec) {
@@ -24,7 +28,7 @@ function clockLabel(sec) {
 export function renderRhythmPlayer(container, data) {
   const sig = Array.isArray(data?.filtered) ? data.filtered : null;
   if (!sig || sig.length < 10 || !data.fs) {
-    return renderMissingExport(container, {}, { title: 'Rhythmus-Export fehlt', file: 'rhythm_demo.json', iconName: 'pulse', name: 'rhythm' });
+    return renderMissingExport(container, {}, { title: tr('Rhythmus-Export fehlt', 'Rhythm export missing'), file: 'rhythm_demo.json', iconName: 'pulse', name: 'rhythm' });
   }
   const fs = Number(data.fs);
   const dur = sig.length / fs;
@@ -36,23 +40,23 @@ export function renderRhythmPlayer(container, data) {
 
   container.innerHTML = `
     <div class="ecg-paper relative">
-      <svg data-strip class="block w-full" style="height:${H}px" role="img" aria-label="Laufendes EKG, Record ${esc(data.record)}"></svg>
+      <svg data-strip class="block w-full" style="height:${H}px" role="img" aria-label="${tr('Laufendes EKG, Record', 'Running ECG, record')} ${esc(data.record)}"></svg>
     </div>
     <div class="flex min-h-[4.25rem] items-start gap-3 border-t border-line px-4 py-3" aria-live="polite" data-now></div>
     <div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
       <button type="button" class="btn btn-primary btn-sm" data-play></button>
-      <button type="button" class="btn btn-ghost btn-sm" data-prev aria-label="Vorherige Auffälligkeit">${icon('chevronRight', 'size-3.5 rotate-180')}Vorherige</button>
-      <button type="button" class="btn btn-ghost btn-sm" data-next aria-label="Nächste Auffälligkeit">Nächste ${icon('chevronRight', 'size-3.5')}</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-prev aria-label="${tr('Vorherige Auffälligkeit', 'Previous abnormal beat')}">${icon('chevronRight', 'size-3.5 rotate-180')}${tr('Vorherige', 'Previous')}</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-next aria-label="${tr('Nächste Auffälligkeit', 'Next abnormal beat')}">${tr('Nächste', 'Next')} ${icon('chevronRight', 'size-3.5')}</button>
       <span class="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden="true"></span>
-      <span class="text-[12px] text-muted">Springe zu:</span>
+      <span class="text-[12px] text-muted">${tr('Springe zu:', 'Jump to:')}</span>
       <button type="button" class="chip hover:border-accent/50" data-jump="0">${dot('N')}Normal · 0:00</button>
-      ${events.map((e) => `<button type="button" class="chip hover:border-accent/50" data-jump="${e.t}" title="${esc(CLASS_LABELS[e.aami] || e.aami)} bei ${fmt(e.t, 1)} s">${dot(e.aami)}${esc(e.aami)} · ${clockLabel(e.t)}</button>`).join('')}
+      ${events.map((e) => `<button type="button" class="chip hover:border-accent/50" data-jump="${e.t}" title="${esc(CLASS_LABELS[e.aami] || e.aami)} ${tr('bei', 'at')} ${fmt(e.t, 1)} s">${dot(e.aami)}${esc(e.aami)} · ${clockLabel(e.t)}</button>`).join('')}
     </div>
     <div class="border-t border-line px-4 pb-3 pt-2.5">
       <svg data-mini class="block w-full cursor-pointer touch-none" style="height:${MINI_H}px" role="slider" tabindex="0"
-        aria-label="Position im Ausschnitt" aria-valuemin="0" aria-valuemax="${Math.round(dur)}"></svg>
+        aria-label="${tr('Position im Ausschnitt', 'Position in the excerpt')}" aria-valuemin="0" aria-valuemax="${Math.round(dur)}"></svg>
       <p class="mt-1.5 flex flex-wrap justify-between gap-2 text-[11.5px] text-muted">
-        <span>Gesamter Ausschnitt: ${fmt(dur, 0)} s ab ${clockLabel(data.start_s)} im Record · Farben = Expertenannotation (AAMI)</span>
+        <span>${tr(`Gesamter Ausschnitt: ${fmt(dur, 0)} s ab ${clockLabel(data.start_s)} im Record · Farben = Expertenannotation (AAMI)`, `Full excerpt: ${fmt(dur, 0)} s from ${clockLabel(data.start_s)} in the record · colors = expert annotation (AAMI)`)}</span>
         <span class="num" data-pos></span>
       </p>
     </div>`;
@@ -101,7 +105,7 @@ export function renderRhythmPlayer(container, data) {
       pts.push(`${((i / sig.length) * W).toFixed(1)},${(4 + (1 - (sig[i] - lo) / span) * (MINI_H - 8)).toFixed(1)}`);
     }
     miniStatic = `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--c-muted)" stroke-opacity=".55" stroke-width="1"/>
-      ${events.map((e) => `<rect x="${((e.t / dur) * W - 1.5).toFixed(1)}" y="0" width="3" height="${MINI_H}" rx="1.5" fill="${classColor(e.aami)}"><title>${esc(e.aami)} bei ${fmt(e.t, 1)} s</title></rect>`).join('')}`;
+      ${events.map((e) => `<rect x="${((e.t / dur) * W - 1.5).toFixed(1)}" y="0" width="3" height="${MINI_H}" rx="1.5" fill="${classColor(e.aami)}"><title>${esc(e.aami)} ${tr('bei', 'at')} ${fmt(e.t, 1)} s</title></rect>`).join('')}`;
   }
 
   function drawMini() {
@@ -109,7 +113,7 @@ export function renderRhythmPlayer(container, data) {
     mini.setAttribute('viewBox', `0 0 ${W} ${MINI_H}`);
     mini.innerHTML = `<rect x="${x0.toFixed(1)}" y="0" width="${Math.max(2, x1 - x0).toFixed(1)}" height="${MINI_H}" rx="4" fill="color-mix(in srgb, var(--c-filtered) 12%, transparent)" stroke="var(--c-filtered)" stroke-opacity=".5"/>${miniStatic}`;
     mini.setAttribute('aria-valuenow', String(Math.round(cur)));
-    mini.setAttribute('aria-valuetext', `${fmt(cur, 1)} Sekunden`);
+    mini.setAttribute('aria-valuetext', `${fmt(cur, 1)} ${tr('Sekunden', 'seconds')}`);
     posLabel.textContent = `${fmt(cur, 1)} s / ${fmt(dur, 0)} s`;
   }
 
@@ -118,12 +122,12 @@ export function renderRhythmPlayer(container, data) {
     const b = focus || [...beats].reverse().find((x) => x.t <= cur - 0.2) || null;
     if (b === shownBeat) return;
     shownBeat = b;
-    if (!b) { nowBox.innerHTML = `<p class="text-[13px] text-muted">Der Schreiber startet …</p>`; return; }
+    if (!b) { nowBox.innerHTML = `<p class="text-[13px] text-muted">${tr('Der Schreiber startet …', 'The recorder is starting …')}</p>`; return; }
     const c = classColor(b.aami);
     nowBox.innerHTML = `<span class="grid size-8 flex-none place-items-center rounded-lg font-mono text-sm font-semibold" style="color:${c};background:color-mix(in srgb,${c} 12%,transparent);border:1px solid color-mix(in srgb,${c} 30%,transparent)">${esc(b.aami)}</span>
       <span class="min-w-0">
-        <span class="block text-[13px] font-semibold text-fg">${esc(CLASS_LABELS[b.aami] || b.aami)} <span class="font-normal text-muted">· Symbol „${esc(b.symbol)}“ bei ${fmt(b.t, 1)} s</span></span>
-        <span class="mt-0.5 block text-[12.5px] leading-snug text-muted">${esc(DESCRIPTION[b.aami] || '')}</span>
+        <span class="block text-[13px] font-semibold text-fg">${esc(CLASS_LABELS[b.aami] || b.aami)} <span class="font-normal text-muted">· ${tr(`Symbol „${esc(b.symbol)}“ bei ${fmt(b.t, 1)} s`, `symbol “${esc(b.symbol)}” at ${fmt(b.t, 1)} s`)}</span></span>
+        <span class="mt-0.5 block text-[12.5px] leading-snug text-muted">${esc(DESCRIPTION[b.aami] ? tr(...DESCRIPTION[b.aami]) : '')}</span>
       </span>`;
   }
 
@@ -133,7 +137,7 @@ export function renderRhythmPlayer(container, data) {
     playing = p;
     playBtn.innerHTML = p
       ? `<svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Pause`
-      : `<svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Abspielen`;
+      : `<svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>${tr('Abspielen', 'Play')}`;
     cancelAnimationFrame(raf);
     if (p) { focus = null; last = 0; raf = requestAnimationFrame(tick); }
   }

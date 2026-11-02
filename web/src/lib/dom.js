@@ -1,5 +1,7 @@
 // Small DOM / formatting helpers shared by the shell views.
 
+import { locale } from './i18n.js';
+
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /** Escape a value for safe interpolation into HTML text/attributes. */
@@ -14,26 +16,25 @@ export function el(html) {
   return t.content.firstElementChild;
 }
 
-const nf = new Intl.NumberFormat('de-DE');
-/** German number formatting with optional fraction digits. */
+/** Number formatting in the current UI language with optional fraction digits. */
 export function fmt(n, digits) {
   if (n == null || Number.isNaN(Number(n))) return '–';
-  if (digits == null) return nf.format(n);
-  return new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+  if (digits == null) return new Intl.NumberFormat(locale()).format(n);
+  return new Intl.NumberFormat(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
 }
 
-/** Format a ratio 0..1 as percent (German). */
+/** Format a ratio 0..1 as percent ("12,3 %" in German, "12.3%" in English). */
 export function pct(x, digits = 1) {
   if (x == null || Number.isNaN(Number(x))) return '–';
-  return fmt(Number(x) * 100, digits) + ' %';
+  return fmt(Number(x) * 100, digits) + (locale() === 'de-DE' ? ' %' : '%');
 }
 
-/** Format an ISO timestamp as a short German date-time. */
+/** Format an ISO timestamp as a short date-time in the current UI language. */
 export function fmtTime(iso) {
   if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return esc(iso);
-  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /** Whether the user prefers reduced motion. */

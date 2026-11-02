@@ -7,6 +7,7 @@ import {
   svg, h, esc, fmt, fmtPct, fmtSig, makeRoot, createTooltip, ttRow, observeWidth, listeners,
   isPending, renderPendingFull, classColor, CLASS_LABELS, CLASSES, iconButton, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const NODE_W = 172;
 const NODE_H = 78;
@@ -14,19 +15,25 @@ const GAP_X = 18;
 const GAP_Y = 46;
 const PAD = 16;
 
-export const FEATURE_LABELS = {
-  qrs_width_ms: 'QRS-Breite (ms)',
-  r_amplitude: 'R-Amplitude (z)',
-  q_depth: 'Q-Tiefe (z)',
-  s_depth: 'S-Tiefe (z)',
-  qrs_area: 'QRS-Fläche (z·ms)',
-  t_amplitude: 'T-Amplitude (z)',
-  beat_energy: 'QRS-Energieanteil',
-  pre_rr: 'RR-Intervall davor (s)',
-  post_rr: 'RR-Intervall danach (s)',
-  local_rr: 'lokales mittleres RR (s)',
-  rr_ratio: 'RR davor / lokales RR',
+// [de, en] pairs, resolved at render time via featureLabel().
+const FEATURE_LABELS = {
+  qrs_width_ms: ['QRS-Breite (ms)', 'QRS width (ms)'],
+  r_amplitude: ['R-Amplitude (z)', 'R amplitude (z)'],
+  q_depth: ['Q-Tiefe (z)', 'Q depth (z)'],
+  s_depth: ['S-Tiefe (z)', 'S depth (z)'],
+  qrs_area: ['QRS-Fläche (z·ms)', 'QRS area (z·ms)'],
+  t_amplitude: ['T-Amplitude (z)', 'T amplitude (z)'],
+  beat_energy: ['QRS-Energieanteil', 'QRS energy share'],
+  pre_rr: ['RR-Intervall davor (s)', 'RR interval before (s)'],
+  post_rr: ['RR-Intervall danach (s)', 'RR interval after (s)'],
+  local_rr: ['lokales mittleres RR (s)', 'local mean RR (s)'],
+  rr_ratio: ['RR davor / lokales RR', 'RR before / local RR'],
 };
+
+/** Readable feature name in the current language (falls back to the raw key). */
+export function featureLabel(f) {
+  return FEATURE_LABELS[f] ? tr(...FEATURE_LABELS[f]) : f;
+}
 
 function rootOf(data) {
   if (!data || typeof data !== 'object') return null;
@@ -39,7 +46,7 @@ const isLeaf = (n) => !n.left && !n.right;
 export function renderTreeView(container, data, opts = {}) {
   const src = rootOf(data);
   if (isPending(data) || !src) {
-    return renderPendingFull(container, data, opts, { title: 'Entscheidungsbaum folgt nach dem Volltraining', iconName: 'tree', name: 'tree' });
+    return renderPendingFull(container, data, opts, { title: tr('Entscheidungsbaum folgt nach dem Volltraining', 'Decision tree available after the full training'), iconName: 'tree', name: 'tree' });
   }
   const classNames = Array.isArray(data.class_names) ? data.class_names : CLASSES;
 
@@ -65,23 +72,25 @@ export function renderTreeView(container, data, opts = {}) {
   const features = [...new Set(nodes.filter((n) => n.feature).map((n) => n.feature))];
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Interaktiver Entscheidungsbaum', name: 'tree' });
+  const root = makeRoot(container, { label: tr('Interaktiver Entscheidungsbaum', 'Interactive decision tree'), name: 'tree' });
   const bar = h('div', { class: 'ekc-toolbar' }, root);
-  h('span', { class: 'ekc-badge ekc-num', text: `Tiefe ${maxDepth}` }, bar);
-  h('span', { class: 'ekc-badge ekc-num', text: `${leaves} Blätter` }, bar);
-  h('span', { class: 'ekc-badge ekc-num', text: `${fmt(tree.samples)} Beats` }, bar);
-  h('span', { class: 'ekc-badge ekc-num', text: `${features.length} Merkmale genutzt`, title: features.map((f) => FEATURE_LABELS[f] || f).join(', ') }, bar);
+  h('span', { class: 'ekc-badge ekc-num', text: `${tr('Tiefe', 'Depth')} ${maxDepth}` }, bar);
+  h('span', { class: 'ekc-badge ekc-num', text: `${leaves} ${tr('Blätter', 'leaves')}` }, bar);
+  h('span', { class: 'ekc-badge ekc-num', text: `${fmt(tree.samples)} ${tr('Beats', 'beats')}` }, bar);
+  h('span', { class: 'ekc-badge ekc-num', text: `${features.length} ${tr('Merkmale genutzt', 'features used')}`, title: features.map(featureLabel).join(', ') }, bar);
   h('span', { class: 'ekc-spacer' }, bar);
   const btns = h('div', { class: 'ekc-btngroup' }, bar);
-  iconButton(btns, { iconName: 'expand', label: 'Alle Knoten aufklappen', onClick: () => { collapsed.clear(); draw(true); } });
-  iconButton(btns, { iconName: 'collapse', label: 'Auf die ersten Ebenen einklappen', onClick: () => { collapsed.clear(); nodes.forEach((n) => { if (!isLeaf(n) && n.__depth >= 1) collapsed.add(n.__k); }); draw(true); } });
+  iconButton(btns, { iconName: 'expand', label: tr('Alle Knoten aufklappen', 'Expand all nodes'), onClick: () => { collapsed.clear(); draw(true); } });
+  iconButton(btns, { iconName: 'collapse', label: tr('Auf die ersten Ebenen einklappen', 'Collapse to the top levels'), onClick: () => { collapsed.clear(); nodes.forEach((n) => { if (!isLeaf(n) && n.__depth >= 1) collapsed.add(n.__k); }); draw(true); } });
 
   const scroller = h('div', { class: 'ekc-scroll', style: { borderRadius: '12px', border: '1px solid var(--c-border)', background: 'var(--c-surface-2)' } }, root);
-  const s = svg('svg', { role: 'tree', 'aria-label': `Entscheidungsbaum mit Tiefe ${maxDepth} und ${leaves} Blättern. Enter oder Leertaste klappt Knoten auf und zu.` }, scroller);
+  const s = svg('svg', { role: 'tree', 'aria-label': tr(`Entscheidungsbaum mit Tiefe ${maxDepth} und ${leaves} Blättern. Enter oder Leertaste klappt Knoten auf und zu.`, `Decision tree with depth ${maxDepth} and ${leaves} leaves. Enter or Space expands and collapses nodes.`) }, scroller);
   const tip = createTooltip(root);
   const legend = h('div', { class: 'ekc-legend', style: { marginTop: '10px' } }, root);
   classNames.forEach((c) => h('span', { class: 'ekc-legend-item', html: `<i class="ekc-dot" style="--sw:${classColor(c)}"></i><b style="color:${classColor(c)}">${esc(c)}</b> ${esc(CLASS_LABELS[c] || '')}` }, legend));
-  note(root, 'Linker Ast: Bedingung erfüllt (ja, ≤), rechter Ast: nicht erfüllt (nein, >). Der Balken zeigt die Klassenverteilung im Knoten – mit class_weight="balanced" gewichtet, daher nicht identisch mit den Rohanteilen. Klick oder Enter klappt Knoten auf/zu; Hover hebt den Entscheidungspfad hervor.');
+  note(root, tr(
+    'Linker Ast: Bedingung erfüllt (ja, ≤), rechter Ast: nicht erfüllt (nein, >). Der Balken zeigt die Klassenverteilung im Knoten – mit class_weight="balanced" gewichtet, daher nicht identisch mit den Rohanteilen. Klick oder Enter klappt Knoten auf/zu; Hover hebt den Entscheidungspfad hervor.',
+    'Left branch: condition met (yes, ≤), right branch: not met (no, >). The bar shows the class distribution in the node – weighted with class_weight="balanced", so it differs from the raw shares. Click or Enter expands/collapses a node; hover highlights the decision path.'));
 
   let availW = 0;
   let hovered = null;
@@ -108,9 +117,9 @@ export function renderTreeView(container, data, opts = {}) {
 
   function nodeHtml(n) {
     const rows = classNames.map((c, i) => (n.value?.[i] ? ttRow(`${c} · ${CLASS_LABELS[c] || ''}`, fmtPct(n.value[i], 1), classColor(c)) : '')).join('');
-    const cond = n.feature ? `<div class="ekc-tt-title">${esc(FEATURE_LABELS[n.feature] || n.feature)} ≤ ${esc(fmtSig(n.threshold, 4))}?</div>` : `<div class="ekc-tt-title">Blatt → Vorhersage ${esc(n.class)} (${esc(CLASS_LABELS[n.class] || '')})</div>`;
+    const cond = n.feature ? `<div class="ekc-tt-title">${esc(featureLabel(n.feature))} ≤ ${esc(fmtSig(n.threshold, 4))}?</div>` : `<div class="ekc-tt-title">${tr('Blatt → Vorhersage', 'Leaf → predicted')} ${esc(n.class)} (${esc(CLASS_LABELS[n.class] || '')})</div>`;
     const path = pathText(n);
-    return `${cond}${ttRow('Beats im Knoten', fmt(n.samples))}${n.impurity != null ? ttRow('Gini-Unreinheit', fmt(n.impurity, 3)) : ''}<div style="margin:5px 0 2px;color:var(--c-muted);font-size:11px">Klassenverteilung (gewichtet)</div>${rows}${path ? `<div style="margin-top:6px;color:var(--c-muted);font-size:11px;white-space:normal">Pfad: ${esc(path)}</div>` : ''}`;
+    return `${cond}${ttRow(tr('Beats im Knoten', 'Beats in node'), fmt(n.samples))}${n.impurity != null ? ttRow(tr('Gini-Unreinheit', 'Gini impurity'), fmt(n.impurity, 3)) : ''}<div style="margin:5px 0 2px;color:var(--c-muted);font-size:11px">${tr('Klassenverteilung (gewichtet)', 'Class distribution (weighted)')}</div>${rows}${path ? `<div style="margin-top:6px;color:var(--c-muted);font-size:11px;white-space:normal">${tr('Pfad', 'Path')}: ${esc(path)}</div>` : ''}`;
   }
 
   function pathText(n) {
@@ -152,7 +161,7 @@ export function renderTreeView(container, data, opts = {}) {
         const edge = svg('path', { d: `M${px},${py}C${px},${my} ${cx},${my} ${cx},${cy}`, style: { fill: 'none', stroke: 'var(--c-border)', strokeWidth: 1.6, transition: 'stroke .15s, stroke-width .15s' } }, gEdges);
         const lx = (px + cx) / 2 + (n.__branch === 'left' ? -4 : 4), ly = my - 3;
         const lab = svg('g', {}, gEdges);
-        const txt = n.__branch === 'left' ? 'ja' : 'nein';
+        const txt = n.__branch === 'left' ? tr('ja', 'yes') : tr('nein', 'no');
         svg('rect', { x: lx - (txt.length * 3.5 + 6), y: ly - 9, width: txt.length * 7 + 12, height: 16, rx: 8, style: { fill: 'var(--c-surface)', stroke: 'var(--c-border)' } }, lab);
         svg('text', { x: lx, y: ly + 3, 'text-anchor': 'middle', style: { fill: 'var(--c-muted)', fontSize: '10px', fontWeight: 600 }, text: txt }, lab);
         els.set(`e${n.__k}`, edge);
@@ -164,8 +173,9 @@ export function renderTreeView(container, data, opts = {}) {
         transform: `translate(${x},${y})`, role: 'treeitem', tabindex: 0, 'aria-level': n.__depth + 1,
         'aria-expanded': leaf ? null : String(!isCollapsed),
         'aria-label': leaf
-          ? `Blatt: Vorhersage ${n.class}, ${n.samples} Beats`
-          : `Wenn ${FEATURE_LABELS[n.feature] || n.feature} kleiner gleich ${fmtSig(n.threshold, 4)}, ${n.samples} Beats${isCollapsed ? ', eingeklappt' : ''}`,
+          ? tr(`Blatt: Vorhersage ${n.class}, ${n.samples} Beats`, `Leaf: predicted ${n.class}, ${n.samples} beats`)
+          : tr(`Wenn ${featureLabel(n.feature)} kleiner gleich ${fmtSig(n.threshold, 4)}, ${n.samples} Beats${isCollapsed ? ', eingeklappt' : ''}`,
+            `If ${featureLabel(n.feature)} less than or equal to ${fmtSig(n.threshold, 4)}, ${n.samples} beats${isCollapsed ? ', collapsed' : ''}`),
         style: { cursor: leaf ? 'default' : 'pointer' },
       }, gNodes);
       svg('rect', { x: -3, y: -3, width: NODE_W + 6, height: NODE_H + 6, rx: 13, class: 'ekc-focus' }, g);
@@ -180,7 +190,7 @@ export function renderTreeView(container, data, opts = {}) {
         svg('tspan', { dx: 4, text: fmtSig(n.threshold, 3) }, t);
       } else {
         const t = svg('text', { x: 12, y: 21, style: { fontSize: '12px', fontWeight: 650, fill: 'var(--c-text)' } }, g);
-        svg('tspan', { text: 'Vorhersage ' }, t);
+        svg('tspan', { text: tr('Vorhersage ', 'Predicted ') }, t);
         svg('tspan', { style: { fill: col, fontWeight: 800 }, text: n.class }, t);
       }
       svg('text', { x: 12, y: 39, class: 'ekc-num', style: { fontSize: '10.5px', fill: 'var(--c-muted)' }, text: `n = ${fmt(n.samples)}${n.impurity != null ? ` · Gini ${fmt(n.impurity, 2)}` : ''}` }, g);
@@ -195,7 +205,7 @@ export function renderTreeView(container, data, opts = {}) {
       });
       svg('rect', { x: bx, y: by, width: bw, height: bh, rx: 3, style: { fill: 'none', stroke: 'var(--c-surface)', strokeWidth: 1 } }, g);
       const top = (n.value || []).map((v, i) => [v, classNames[i]]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0]).slice(0, 2);
-      svg('text', { x: 12, y: 71, class: 'ekc-num', style: { fontSize: '10px', fill: 'var(--c-muted)' }, text: top.map(([v, c]) => `${c} ${fmt(v * 100, 0)} %`).join(' · ') }, g);
+      svg('text', { x: 12, y: 71, class: 'ekc-num', style: { fontSize: '10px', fill: 'var(--c-muted)' }, text: top.map(([v, c]) => `${c} ${fmtPct(v, 0)}`).join(' · ') }, g);
       if (!leaf) {
         // expand/collapse affordance
         const bgc = svg('g', { transform: `translate(${NODE_W - 20},${NODE_H - 16})` }, g);

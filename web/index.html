@@ -16,13 +16,18 @@
         try { pref = localStorage.getItem('ekg-theme') || 'system'; } catch (e) {}
         var dark = pref === 'dark' || (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
+        // Same rule as src/lib/i18n.js: stored choice, else browser language, else German.
+        var lang = null;
+        try { lang = localStorage.getItem('ekg-lang'); } catch (e) {}
+        if (lang !== 'de' && lang !== 'en') lang = /^en/i.test((navigator.languages && navigator.languages[0]) || navigator.language || '') ? 'en' : 'de';
+        document.documentElement.lang = lang;
       })();
     </script>
   </head>
   <body>
     <a href="#main" class="skip-link">Zum Inhalt springen</a>
     <div id="app"></div>
-    <noscript>Diese Oberfläche benötigt JavaScript.</noscript>
+    <noscript>Diese Oberfläche benötigt JavaScript. · This interface requires JavaScript.</noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

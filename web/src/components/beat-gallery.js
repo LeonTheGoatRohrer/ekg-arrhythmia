@@ -6,6 +6,7 @@ import {
   ttRow, observeWidth, listeners, isPending, renderMissingExport, classColor, CLASS_LABELS,
   CLASSES, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const PANEL_H = 168;
 const M = { top: 10, right: 10, bottom: 30, left: 36 };
@@ -13,7 +14,7 @@ const M = { top: 10, right: 10, bottom: 30, left: 36 };
 export function renderBeatGallery(container, data, opts = {}) {
   const examples = Array.isArray(data?.examples) ? data.examples.filter((e) => e && Array.isArray(e.beat) && e.beat.length > 1) : [];
   if (isPending(data) || !examples.length) {
-    return renderMissingExport(container, opts, { title: 'Segmentierte Herzschläge noch nicht verfügbar', file: 'segmentation_demo.json', iconName: 'pulse', name: 'beats' });
+    return renderMissingExport(container, opts, { title: tr('Segmentierte Herzschläge noch nicht verfügbar', 'Segmented beats not available yet'), file: 'segmentation_demo.json', iconName: 'pulse', name: 'beats' });
   }
 
   const fs = Number(data.fs) || 360;
@@ -44,7 +45,7 @@ export function renderBeatGallery(container, data, opts = {}) {
   const [ylo, yhi] = niceDomain(lo0, hi0, 4, 0.04);
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Segmentierte Herzschläge je AAMI-Klasse', name: 'beats' });
+  const root = makeRoot(container, { label: tr('Segmentierte Herzschläge je AAMI-Klasse', 'Segmented beats per AAMI class'), name: 'beats' });
   const grid = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 210px), 1fr))', gap: '10px' } }, root);
   const tip = createTooltip(root);
   const panels = [];
@@ -60,31 +61,39 @@ export function renderBeatGallery(container, data, opts = {}) {
     h('span', { text: c, style: { fontWeight: 700, color: classColor(c), fontSize: '14px' } }, head);
     h('span', { text: CLASS_LABELS[c], style: { color: 'var(--c-muted)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: '1 1 auto' } }, head);
     const total = totalOf(c);
-    const countText = total != null ? `${fmt(list.length)} von ${fmt(total)}` : `n = ${fmt(list.length)}`;
+    const countText = total != null ? tr(`${fmt(list.length)} von ${fmt(total)}`, `${fmt(list.length)} of ${fmt(total)}`) : `n = ${fmt(list.length)}`;
     h('span', {
       class: 'ekc-num ekc-meta', text: countText, style: { whiteSpace: 'nowrap', flex: 'none' },
-      title: total != null ? `${fmt(list.length)} gezeigte Beispiele von ${fmt(total)} Schlägen der Klasse ${c} in Record ${record}` : `${fmt(list.length)} gezeigte Beispiele`,
+      title: total != null
+        ? tr(`${fmt(list.length)} gezeigte Beispiele von ${fmt(total)} Schlägen der Klasse ${c} in Record ${record}`, `${fmt(list.length)} examples shown out of ${fmt(total)} class ${c} beats in record ${record}`)
+        : tr(`${fmt(list.length)} gezeigte Beispiele`, `${fmt(list.length)} examples shown`),
     }, head);
     if (!list.length) {
       h('div', {
         style: { height: `${PANEL_H - 12}px`, display: 'grid', placeItems: 'center', textAlign: 'center', color: 'var(--c-muted)', fontSize: '12px', padding: '0 12px', border: '1px dashed var(--c-border)', borderRadius: '9px', margin: '6px 0 8px', background: 'var(--c-surface-2)' },
-        text: `In Record ${record} nicht vorhanden – erst mit der vollständigen MIT-BIH-Datenbank sichtbar.`,
+        text: tr(`In Record ${record} nicht vorhanden – erst mit der vollständigen MIT-BIH-Datenbank sichtbar.`, `Not present in record ${record} – visible only with the complete MIT-BIH database.`),
       }, card);
       continue;
     }
     const s = svg('svg', {
       role: 'img', style: { touchAction: 'pan-y' },
-      'aria-label': `${list.length} Beispiel-Herzschläge der Klasse ${c} (${CLASS_LABELS[c]})${totalOf(c) != null ? ` von ${totalOf(c)} im Record` : ''} überlagert mit ihrem Mittelwert, ${fmt(-preMs)} bis ${fmt(postMs)} ms um die R-Zacke.`,
+      'aria-label': tr(
+        `${list.length} Beispiel-Herzschläge der Klasse ${c} (${CLASS_LABELS[c]})${totalOf(c) != null ? ` von ${totalOf(c)} im Record` : ''} überlagert mit ihrem Mittelwert, ${fmt(-preMs)} bis ${fmt(postMs)} ms um die R-Zacke.`,
+        `${list.length} example beats of class ${c} (${CLASS_LABELS[c]})${totalOf(c) != null ? ` out of ${totalOf(c)} in the record` : ''} overlaid with their mean, ${fmt(-preMs)} to ${fmt(postMs)} ms around the R peak.`,
+      ),
     }, card);
     panels.push({ c, s, list, card });
   }
 
   const legend = h('div', { class: 'ekc-legend', style: { marginTop: '10px' } }, root);
   legend.innerHTML = `
-    <span class="ekc-legend-item"><svg width="22" height="8" aria-hidden="true"><path d="M1 4h20" style="stroke:var(--c-muted);stroke-width:1.2;opacity:.45"/></svg>einzelne Schläge</span>
-    <span class="ekc-legend-item"><svg width="22" height="8" aria-hidden="true"><path d="M1 4h20" style="stroke:var(--c-text);stroke-width:2.4"/></svg>Mittel der gezeigten Beispiele</span>
-    <span class="ekc-legend-item"><svg width="22" height="10" aria-hidden="true"><path d="M11 0v10" style="stroke:var(--c-peak);stroke-width:1.4;stroke-dasharray:2 2"/></svg>R-Zacke (0 ms)</span>`;
-  note(root, `Fenster ${fmt(-preMs)} … +${fmt(postMs)} ms um die R-Zacke (${fmt(L)} Samples bei ${fmt(fs)} Hz), echte Schläge aus Record ${record}. Gezeigt wird je Klasse eine Auswahl von Beispielen („12 von 2.237“ = 12 gezeigte von 2.237 Schlägen im Record) – die Klassen sind in Wirklichkeit sehr ungleich häufig. Gemeinsame y-Achse für alle Klassen; Amplitude in ${unit}.`);
+    <span class="ekc-legend-item"><svg width="22" height="8" aria-hidden="true"><path d="M1 4h20" style="stroke:var(--c-muted);stroke-width:1.2;opacity:.45"/></svg>${tr('einzelne Schläge', 'individual beats')}</span>
+    <span class="ekc-legend-item"><svg width="22" height="8" aria-hidden="true"><path d="M1 4h20" style="stroke:var(--c-text);stroke-width:2.4"/></svg>${tr('Mittel der gezeigten Beispiele', 'mean of the examples shown')}</span>
+    <span class="ekc-legend-item"><svg width="22" height="10" aria-hidden="true"><path d="M11 0v10" style="stroke:var(--c-peak);stroke-width:1.4;stroke-dasharray:2 2"/></svg>${tr('R-Zacke (0 ms)', 'R peak (0 ms)')}</span>`;
+  note(root, tr(
+    `Fenster ${fmt(-preMs)} … +${fmt(postMs)} ms um die R-Zacke (${fmt(L)} Samples bei ${fmt(fs)} Hz), echte Schläge aus Record ${record}. Gezeigt wird je Klasse eine Auswahl von Beispielen („12 von 2.237“ = 12 gezeigte von 2.237 Schlägen im Record) – die Klassen sind in Wirklichkeit sehr ungleich häufig. Gemeinsame y-Achse für alle Klassen; Amplitude in ${unit}.`,
+    `Window ${fmt(-preMs)} … +${fmt(postMs)} ms around the R peak (${fmt(L)} samples at ${fmt(fs)} Hz), real beats from record ${record}. Each class shows a selection of examples ("12 of 2,237" = 12 shown out of 2,237 beats in the record) – in reality the classes are highly imbalanced. Shared y-axis for all classes; amplitude in ${unit}.`,
+  ));
 
   function drawPanel(p, W) {
     const { s, list, c } = p;
@@ -107,7 +116,7 @@ export function renderBeatGallery(container, data, opts = {}) {
       svg('text', { x: x(t), y: plot.y1 + 16, 'text-anchor': 'middle', class: 'ekc-tick', text: fmt(t) }, ax);
     }
     svg('line', { x1: plot.x0, x2: plot.x1, y1: plot.y1, y2: plot.y1, class: 'ekc-axis-line' }, ax);
-    svg('text', { x: plot.x1, y: plot.y1 + 28, 'text-anchor': 'end', class: 'ekc-sublabel', text: 'ms relativ zu R' }, ax);
+    svg('text', { x: plot.x1, y: plot.y1 + 28, 'text-anchor': 'end', class: 'ekc-sublabel', text: tr('ms relativ zu R', 'ms relative to R') }, ax);
     svg('text', { x: 2, y: plot.y0 + 2, class: 'ekc-sublabel', text: unit, 'dominant-baseline': 'hanging' }, ax);
     // R marker
     svg('line', { x1: x(0), x2: x(0), y1: plot.y0, y2: plot.y1, style: { stroke: 'var(--c-peak)', strokeWidth: 1.3, strokeDasharray: '3 3' } }, s);
@@ -136,7 +145,7 @@ export function renderBeatGallery(container, data, opts = {}) {
       svg('line', { x1: x(tOf(j)), x2: x(tOf(j)), y1: plot.y0, y2: plot.y1, class: 'ekc-crosshair' }, over);
       svg('circle', { cx: x(tOf(j)), cy: y(mean[j]), r: 3.4, style: { fill: classColor(p.c), stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, over);
       const syms = [...new Set(p.list.map((e2) => e2.symbol).filter(Boolean))].join(', ');
-      tip.show(`<div class="ekc-tt-title">Klasse ${esc(p.c)} · ${fmt(tOf(j), 0)} ms</div>${ttRow('Mittel (Beispiele)', `${fmt(mean[j], 3)} ${unit}`, classColor(p.c))}${ttRow('Gezeigte Beats', totalOf(p.c) != null ? `${fmt(p.list.length)} von ${fmt(totalOf(p.c))}` : fmt(p.list.length))}${syms ? ttRow('MIT-BIH-Symbole', syms) : ''}`, e.clientX, e.clientY);
+      tip.show(`<div class="ekc-tt-title">${tr('Klasse', 'Class')} ${esc(p.c)} · ${fmt(tOf(j), 0)} ms</div>${ttRow(tr('Mittel (Beispiele)', 'Mean (examples)'), `${fmt(mean[j], 3)} ${unit}`, classColor(p.c))}${ttRow(tr('Gezeigte Beats', 'Beats shown'), totalOf(p.c) != null ? tr(`${fmt(p.list.length)} von ${fmt(totalOf(p.c))}`, `${fmt(p.list.length)} of ${fmt(totalOf(p.c))}`) : fmt(p.list.length))}${syms ? ttRow(tr('MIT-BIH-Symbole', 'MIT-BIH symbols'), syms) : ''}`, e.clientX, e.clientY);
     };
     ls.on(p.s, 'pointermove', handler);
     ls.on(p.s, 'pointerdown', handler);

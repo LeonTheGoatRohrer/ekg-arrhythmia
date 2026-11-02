@@ -6,12 +6,14 @@ import {
   makeRoot, createTooltip, ttRow, observeWidth, listeners, createBrush, isPending,
   renderMissingExport, nextId, tile, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
+// title/desc are getters so they follow the current UI language at render time.
 const STAGES = [
-  { key: 'bandpassed', title: 'Bandpass 5–15 Hz', desc: 'dämpft P-/T-Welle, Baseline und Muskelrauschen', color: 'var(--c-accent-2)', signed: true },
-  { key: 'derivative', title: 'Ableitung', desc: 'betont die steilen QRS-Flanken', color: 'var(--c-accent)', signed: true },
-  { key: 'squared', title: 'Quadrierung', desc: 'macht alles positiv, verstärkt große Steigungen', color: 'var(--c-filtered)', signed: false },
-  { key: 'integrated', title: 'Gleitende Integration (150 ms)', desc: 'Hüllkurve der QRS-Energie → Schwellwert-Detektion', color: 'var(--c-peak)', signed: false },
+  { key: 'bandpassed', get title() { return tr('Bandpass 5–15 Hz', 'Band-pass 5–15 Hz'); }, get desc() { return tr('dämpft P-/T-Welle, Baseline und Muskelrauschen', 'attenuates P/T waves, baseline and muscle noise'); }, color: 'var(--c-accent-2)', signed: true },
+  { key: 'derivative', get title() { return tr('Ableitung', 'Derivative'); }, get desc() { return tr('betont die steilen QRS-Flanken', 'emphasizes the steep QRS slopes'); }, color: 'var(--c-accent)', signed: true },
+  { key: 'squared', get title() { return tr('Quadrierung', 'Squaring'); }, get desc() { return tr('macht alles positiv, verstärkt große Steigungen', 'makes everything positive, amplifies large slopes'); }, color: 'var(--c-filtered)', signed: false },
+  { key: 'integrated', get title() { return tr('Gleitende Integration (150 ms)', 'Moving-window integration (150 ms)'); }, get desc() { return tr('Hüllkurve der QRS-Energie → Schwellwert-Detektion', 'envelope of the QRS energy → threshold detection'); }, color: 'var(--c-peak)', signed: false },
 ];
 
 const M = { left: 14, right: 14, top: 4, bottom: 38 };
@@ -24,8 +26,8 @@ export function renderPanTompkins(container, data, opts = {}) {
   const stages = STAGES.filter((st) => Array.isArray(stagesIn?.[st.key]) && stagesIn[st.key].length > 1);
   if (isPending(data) || !stages.length) {
     return renderMissingExport(container, opts, {
-      title: 'Pan-Tompkins-Stufen noch nicht verfügbar', file: 'signal_demo.json', iconName: 'wave', name: 'pan-tompkins',
-      text: isPending(data) ? undefined : 'Die Datei enthält keine Zwischenstufen (stages). Sie werden beim Export aus Record 100 berechnet.',
+      title: tr('Pan-Tompkins-Stufen noch nicht verfügbar', 'Pan-Tompkins stages not available yet'), file: 'signal_demo.json', iconName: 'wave', name: 'pan-tompkins',
+      text: isPending(data) ? undefined : tr('Die Datei enthält keine Zwischenstufen (stages). Sie werden beim Export aus Record 100 berechnet.', 'The file contains no intermediate stages (stages). They are computed from record 100 during export.'),
     });
   }
 
@@ -37,17 +39,20 @@ export function renderPanTompkins(container, data, opts = {}) {
   const record = data.record ?? '?';
 
   const ls = listeners();
-  const root = makeRoot(container, { label: `Pan-Tompkins-Zwischenstufen, Record ${record}`, name: 'pan-tompkins' });
+  const root = makeRoot(container, { label: tr(`Pan-Tompkins-Zwischenstufen, Record ${record}`, `Pan-Tompkins intermediate stages, record ${record}`), name: 'pan-tompkins' });
   const wrap = h('div', { style: { position: 'relative' } }, root);
   const clipBase = nextId('pt-clip');
   const s = svg('svg', {
     role: 'img', style: { touchAction: 'pan-y' },
-    'aria-label': `Pan-Tompkins-Verarbeitungsstufen (${stages.map((st) => st.title).join(', ')}) für Record ${record}, ${fmt(dur, 1)} s, ${peaks.length} detektierte R-Zacken.`,
+    'aria-label': tr(
+      `Pan-Tompkins-Verarbeitungsstufen (${stages.map((st) => st.title).join(', ')}) für Record ${record}, ${fmt(dur, 1)} s, ${peaks.length} detektierte R-Zacken.`,
+      `Pan-Tompkins processing stages (${stages.map((st) => st.title).join(', ')}) for record ${record}, ${fmt(dur, 1)} s, ${peaks.length} detected R peaks.`,
+    ),
   }, wrap);
   const defs = svg('defs', {}, s);
   const gMain = svg('g', {}, s);
   const gOver = svg('g', { 'pointer-events': 'none' }, s);
-  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': 'Stufen-Plots. Pfeiltasten bewegen den Cursor.' }, s);
+  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': tr('Stufen-Plots. Pfeiltasten bewegen den Cursor.', 'Stage plots. Arrow keys move the cursor.') }, s);
   const gBrush = svg('g', {}, s);
   const tip = createTooltip(root);
 
@@ -55,16 +60,19 @@ export function renderPanTompkins(container, data, opts = {}) {
   const det = data.detection && typeof data.detection === 'object' ? data.detection : null;
   if (det) {
     const box = h('div', { style: { marginTop: '14px' } }, root);
-    const tiles = h('div', { class: 'ekc-tiles', role: 'list', 'aria-label': 'R-Zacken-Detektion' }, box);
+    const tiles = h('div', { class: 'ekc-tiles', role: 'list', 'aria-label': tr('R-Zacken-Detektion', 'R-peak detection') }, box);
     const items = [
-      { label: 'Treffer (TP)', value: fmt(det.tp), color: 'var(--c-accent)' },
-      { label: 'Falsch-pos. (FP)', value: fmt(det.fp), color: 'var(--c-filtered)' },
-      { label: 'Verpasst (FN)', value: fmt(det.fn), color: 'var(--c-peak)' },
-      { label: 'Sensitivität', value: fmtPct(det.sensitivity, 2), sub: 'TP / (TP + FN)' },
+      { label: tr('Treffer (TP)', 'Hits (TP)'), value: fmt(det.tp), color: 'var(--c-accent)' },
+      { label: tr('Falsch-pos. (FP)', 'False pos. (FP)'), value: fmt(det.fp), color: 'var(--c-filtered)' },
+      { label: tr('Verpasst (FN)', 'Missed (FN)'), value: fmt(det.fn), color: 'var(--c-peak)' },
+      { label: tr('Sensitivität', 'Sensitivity'), value: fmtPct(det.sensitivity, 2), sub: 'TP / (TP + FN)' },
       { label: 'PPV', value: fmtPct(det.ppv, 2), sub: 'TP / (TP + FP)' },
     ];
     for (const it of items) tile(tiles, it).setAttribute('role', 'listitem');
-    note(box, `Gemessen auf Record ${record} gegen die Referenz-Annotationen der MIT-BIH-Datenbank (Toleranz ±${fmt(det.tol_ms ?? 150)} ms). Ein einzelner Record ist kein Benchmark für die gesamte Datenbank.`);
+    note(box, tr(
+      `Gemessen auf Record ${record} gegen die Referenz-Annotationen der MIT-BIH-Datenbank (Toleranz ±${fmt(det.tol_ms ?? 150)} ms). Ein einzelner Record ist kein Benchmark für die gesamte Datenbank.`,
+      `Measured on record ${record} against the MIT-BIH reference annotations (tolerance ±${fmt(det.tol_ms ?? 150)} ms). A single record is not a benchmark for the entire database.`,
+    ));
   }
 
   let geo = null;
@@ -114,7 +122,7 @@ export function renderPanTompkins(container, data, opts = {}) {
     svg('path', { d: seriesPath(last, 0, last.length, ox, oy, plot.x1 - plot.x0), style: { fill: 'none', stroke: 'var(--c-muted)', strokeWidth: 1 } }, gBrush);
     brush = createBrush(gBrush, {
       x0: plot.x0, x1: plot.x1, y: ovY, height: OVERVIEW_H, domain: [0, dur], view, minSpan: Math.min(0.5, dur),
-      label: 'Sichtbarer Zeitausschnitt', onChange: (a, b) => setView(a, b, true),
+      label: tr('Sichtbarer Zeitausschnitt', 'Visible time window'), onChange: (a, b) => setView(a, b, true),
     });
     draw();
   }
@@ -166,7 +174,7 @@ export function renderPanTompkins(container, data, opts = {}) {
 
     const xt = niceTicks(t0 + a, t0 + b, Math.max(3, Math.round(W / 90)));
     const xd = Math.max(0, Math.min(3, -Math.floor(Math.log10(xt.step || 1) + 1e-9)));
-    axisBottom(gMain, linear(t0 + a, t0 + b, plot.x0, plot.x1), xt, plot.y1 + 2, { format: (v) => fmtClock(v, xd), title: 'Zeit im Record (min:s) · gestrichelt: detektierte R-Zacken', titleY: plot.y1 + 33 });
+    axisBottom(gMain, linear(t0 + a, t0 + b, plot.x0, plot.x1), xt, plot.y1 + 2, { format: (v) => fmtClock(v, xd), title: tr('Zeit im Record (min:s) · gestrichelt: detektierte R-Zacken', 'Time in record (min:s) · dashed: detected R peaks'), titleY: plot.y1 + 33 });
     geo.x = x;
     if (cursor != null) showCursor(cursor);
   }
@@ -185,7 +193,7 @@ export function renderPanTompkins(container, data, opts = {}) {
       rowsHtml.push(ttRow(r.title, fmtSig(v, 3), r.color));
     }
     const near = peaks.find((p) => Math.abs(p - i) <= 0.05 * fs);
-    if (near != null) rowsHtml.push(ttRow('R-Zacke', `bei ${fmtClock(t0 + near / fs, 3)}`, 'var(--c-peak)'));
+    if (near != null) rowsHtml.push(ttRow(tr('R-Zacke', 'R peak'), tr(`bei ${fmtClock(t0 + near / fs, 3)}`, `at ${fmtClock(t0 + near / fs, 3)}`), 'var(--c-peak)'));
     const html = `<div class="ekc-tt-title">t = ${fmtClock(t0 + i / fs, 3)} (min:s)</div>${rowsHtml.join('')}`;
     if (clientX != null) tip.show(html, clientX, clientY);
     else {

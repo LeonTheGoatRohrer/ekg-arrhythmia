@@ -11,20 +11,21 @@ import { loadJSON } from '../lib/data.js';
 import { esc, icon, reducedMotion } from '../lib/dom.js';
 import { onVisible } from '../lib/lazy.js';
 import { diagramCard, mountDiagramCard, emptyState, errorState, skeleton } from '../lib/ui.js';
+import { t, tr } from '../lib/i18n.js';
 
-/** PANEL_ID -> render function name in components/index.js, data file, selector, label. */
+/** PANEL_ID -> render function name in components/index.js, data file, selector, label (getter: read per render). */
 export const PANELS = {
-  ecg: { fn: 'renderEcgChart', dataFile: 'signal_demo.json', label: 'EKG-Signal: roh vs. gefiltert' },
-  'pan-tompkins': { fn: 'renderPanTompkins', dataFile: 'signal_demo.json', label: 'Pan-Tompkins-Zwischenstufen' },
-  'filter-response': { fn: 'renderFilterResponse', dataFile: 'filter_response.json', label: 'Frequenzgang des Bandpass-Filters' },
-  beats: { fn: 'renderBeatGallery', dataFile: 'segmentation_demo.json', label: 'Segmentierte Herzschläge' },
-  architecture: { fn: 'renderArchitecture', dataFile: 'architecture.json', label: 'Schichten von ECGNet1D' },
-  training: { fn: 'renderTrainingCurve', dataFile: 'metrics.json', select: (d) => d?.cnn?.history ?? null, label: 'Trainingsverlauf (1D-CNN)' },
-  confusion: { fn: 'renderConfusionMatrix', dataFile: 'metrics.json', select: (d) => d?.cnn?.summary ?? null, label: 'Konfusionsmatrix (1D-CNN, DS2)' },
+  ecg: { fn: 'renderEcgChart', dataFile: 'signal_demo.json', get label() { return tr('EKG-Signal: roh vs. gefiltert', 'ECG signal: raw vs. filtered'); } },
+  'pan-tompkins': { fn: 'renderPanTompkins', dataFile: 'signal_demo.json', get label() { return tr('Pan-Tompkins-Zwischenstufen', 'Pan-Tompkins intermediate stages'); } },
+  'filter-response': { fn: 'renderFilterResponse', dataFile: 'filter_response.json', get label() { return tr('Frequenzgang des Bandpass-Filters', 'Frequency response of the band-pass filter'); } },
+  beats: { fn: 'renderBeatGallery', dataFile: 'segmentation_demo.json', get label() { return tr('Segmentierte Herzschläge', 'Segmented beats'); } },
+  architecture: { fn: 'renderArchitecture', dataFile: 'architecture.json', get label() { return tr('Schichten von ECGNet1D', 'Layers of ECGNet1D'); } },
+  training: { fn: 'renderTrainingCurve', dataFile: 'metrics.json', select: (d) => d?.cnn?.history ?? null, get label() { return tr('Trainingsverlauf (1D-CNN)', 'Training history (1D CNN)'); } },
+  confusion: { fn: 'renderConfusionMatrix', dataFile: 'metrics.json', select: (d) => d?.cnn?.summary ?? null, get label() { return tr('Konfusionsmatrix (1D-CNN, DS2)', 'Confusion matrix (1D CNN, DS2)'); } },
   // tree.json only exists after the full DS1 training, which also completes metrics.json.
   // Gate on metrics.json so a pending training does not trigger a (console-logged) 404.
-  tree: { fn: 'renderTreeView', dataFile: 'tree.json', gate: 'metrics.json', label: 'Entscheidungsbaum (interaktiv)' },
-  dataset: { fn: 'renderDatasetStats', dataFile: 'dataset_stats.json', label: 'Datensatz-Statistik' },
+  tree: { fn: 'renderTreeView', dataFile: 'tree.json', gate: 'metrics.json', get label() { return tr('Entscheidungsbaum (interaktiv)', 'Decision tree (interactive)'); } },
+  dataset: { fn: 'renderDatasetStats', dataFile: 'dataset_stats.json', get label() { return tr('Datensatz-Statistik', 'Dataset statistics'); } },
 };
 
 const PHASE_TONES = ['--c-accent', '--c-accent-2', '--c-cls-F', '--c-cls-V', '--c-cls-N', '--c-cls-Q'];
@@ -32,7 +33,7 @@ const PHASE_TONES = ['--c-accent', '--c-accent-2', '--c-cls-F', '--c-cls-V', '--
 const pad2 = (n) => String(n).padStart(2, '0');
 
 function phaseBadge(phase, tone) {
-  return `<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+  return `<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold"
     style="color:var(${tone});background:color-mix(in srgb,var(${tone}) 10%,transparent);border:1px solid color-mix(in srgb,var(${tone}) 28%,transparent)">
     <span class="size-1.5 rounded-full" style="background:var(${tone})"></span>${esc(phase)}</span>`;
 }
@@ -43,7 +44,7 @@ function panelCard(step, panelId) {
   return `<section class="card overflow-hidden" data-panel="${esc(panelId)}" data-step-ref="${esc(step.id)}" aria-label="${esc(p?.label || panelId)}">
     <div class="card-head">
       <div class="min-w-0">
-        <p class="eyebrow">Daten</p>
+        <p class="eyebrow">${tr('Daten', 'Data')}</p>
         <p class="mt-0.5 text-sm font-semibold leading-snug">${esc(p?.label || panelId)}</p>
       </div>
       ${file ? `<span class="chip chip-mono flex-none">${icon('database', 'size-3')}${esc(file)}</span>` : ''}
@@ -55,18 +56,18 @@ function panelCard(step, panelId) {
 function stepMarkup(step, idx, total, tone, next) {
   const bullets = Array.isArray(step.bullets) && step.bullets.length
     ? `<ul class="grid gap-2 sm:grid-cols-2">${step.bullets.map((b) => `
-        <li class="flex gap-2.5 rounded-lg border border-line bg-surface px-3 py-2.5 text-[13px] leading-relaxed">
+        <li class="flex gap-2.5 rounded-lg border border-line bg-surface px-3 py-2.5 text-[15px] leading-relaxed">
           <span class="mt-0.5 flex-none text-accent">${icon('check', 'size-3.5')}</span><span class="min-w-0">${b}</span>
         </li>`).join('')}</ul>`
     : '';
   return `<article id="step-${esc(step.id)}" data-step="${esc(step.id)}" class="scroll-mt-10 lg:scroll-mt-2" aria-labelledby="step-title-${esc(step.id)}">
     <header class="flex gap-4">
-      <span class="num hidden size-10 flex-none place-items-center rounded-xl border border-line bg-surface font-mono text-[13px] font-semibold text-muted sm:grid">${pad2(idx + 1)}</span>
+      <span class="num hidden size-10 flex-none place-items-center rounded-xl border border-line bg-surface font-mono text-[15px] font-semibold text-muted sm:grid">${pad2(idx + 1)}</span>
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           ${step.phase ? phaseBadge(step.phase, tone) : ''}
           ${step.kicker ? `<span class="eyebrow">${esc(step.kicker)}</span>` : ''}
-          <span class="num ml-auto font-mono text-[11px] text-muted sm:hidden">${pad2(idx + 1)} / ${pad2(total)}</span>
+          <span class="num ml-auto font-mono text-xs text-muted sm:hidden">${pad2(idx + 1)} / ${pad2(total)}</span>
         </div>
         <h2 id="step-title-${esc(step.id)}" class="mt-2 text-[22px] font-semibold leading-tight tracking-tight sm:text-2xl">${esc(step.title)}</h2>
         ${step.summary ? `<p class="mt-2 text-[15px] leading-relaxed text-muted">${esc(step.summary)}</p>` : ''}
@@ -75,11 +76,11 @@ function stepMarkup(step, idx, total, tone, next) {
     <div class="mt-6 space-y-6 sm:pl-14">
       ${step.body ? `<div class="prose-step">${step.body}</div>` : ''}
       ${bullets}
-      ${step.diagram ? diagramCard(step.diagram, { eyebrow: 'Diagramm' }) : ''}
+      ${step.diagram ? diagramCard(step.diagram, { eyebrow: t('diagram.eyebrow') }) : ''}
       ${step.panel ? panelCard(step, step.panel) : ''}
       <div class="flex flex-wrap items-center justify-between gap-3">
-        ${step.codeRef ? `<span class="chip chip-mono" title="Quellcode">${icon('code', 'size-3')}${esc(step.codeRef)}</span>` : '<span></span>'}
-        ${next ? `<button type="button" class="inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-fg" data-goto="${esc(next.id)}">Weiter: <span class="text-fg">${esc(next.title)}</span>${icon('arrowRight', 'size-3.5')}</button>` : ''}
+        ${step.codeRef ? `<span class="chip chip-mono" title="${tr('Quellcode', 'Source code')}">${icon('code', 'size-3')}${esc(step.codeRef)}</span>` : '<span></span>'}
+        ${next ? `<button type="button" class="inline-flex items-center gap-1 text-[15px] font-medium text-muted hover:text-fg" data-goto="${esc(next.id)}">${tr('Weiter', 'Next')}: <span class="text-fg">${esc(next.title)}</span>${icon('arrowRight', 'size-3.5')}</button>` : ''}
       </div>
     </div>
   </article>`;
@@ -88,8 +89,8 @@ function stepMarkup(step, idx, total, tone, next) {
 function tocMarkup(groups, steps) {
   return groups.map((g) => `
     <div class="mb-4">
-      <p class="mb-1.5 flex items-center gap-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-        <span class="size-1.5 rounded-full" style="background:var(${g.tone})"></span>${esc(g.phase || 'Schritte')}
+      <p class="mb-1.5 flex items-center gap-2 px-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
+        <span class="size-1.5 rounded-full" style="background:var(${g.tone})"></span>${esc(g.phase || tr('Schritte', 'Steps'))}
       </p>
       ${g.items.map((s) => `<button type="button" class="toc-link" data-toc="${esc(s.id)}">
         <span class="toc-num">${pad2(steps.indexOf(s) + 1)}</span><span class="min-w-0 pt-px">${esc(s.title)}</span>
@@ -116,13 +117,13 @@ export async function render(root, { param } = {}) {
     <section class="grid items-start gap-10 border-b border-line pb-12 pt-12 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-14">
       <div class="lg:sticky lg:top-24">
         <p class="eyebrow">Process</p>
-        <h1 class="mt-2 max-w-3xl text-[32px] font-semibold leading-[1.1] tracking-tight sm:text-[42px]">Wie die Klassifikation entsteht – Schritt für Schritt.</h1>
-        <p class="mt-4 max-w-2xl text-base leading-relaxed text-muted">Von der Rohdatei über Filterung, R-Zacken-Detektion und Segmentierung bis zum 1D-CNN, Training und zur Inter-Patient-Evaluation. Jede Stufe mit Diagramm, echten Daten aus MIT-BIH-Record 100 und Verweis auf den Quellcode.</p>
+        <h1 class="mt-2 max-w-3xl text-[32px] font-semibold leading-[1.1] tracking-tight sm:text-[42px]">${tr('Wie die Klassifikation entsteht – Schritt für Schritt.', 'How the classification comes about – step by step.')}</h1>
+        <p class="mt-4 max-w-2xl text-base leading-relaxed text-muted">${tr('Von der Rohdatei über Filterung, R-Zacken-Detektion und Segmentierung bis zum 1D-CNN, Training und zur Inter-Patient-Evaluation. Jede Stufe mit Diagramm, echten Daten aus MIT-BIH-Record 100 und Verweis auf den Quellcode.', 'From the raw file through filtering, R-peak detection and segmentation to the 1D CNN, training and inter-patient evaluation. Each stage with a diagram, real data from MIT-BIH record 100 and a pointer to the source code.')}</p>
         <div class="mt-5 flex flex-wrap gap-2" data-meta></div>
-        <ol class="mt-8 grid gap-2 sm:grid-cols-2" data-phases aria-label="Phasen"></ol>
+        <ol class="mt-8 grid gap-2 sm:grid-cols-2" data-phases aria-label="${tr('Phasen', 'Phases')}"></ol>
       </div>
-      <div class="min-w-0" aria-label="Pipeline-Übersicht">
-        ${diagramCard('pipeline-overview', { eyebrow: 'Pipeline-Übersicht', minHeight: '14rem' })}
+      <div class="min-w-0" aria-label="${tr('Pipeline-Übersicht', 'Pipeline overview')}">
+        ${diagramCard('pipeline-overview', { eyebrow: tr('Pipeline-Übersicht', 'Pipeline overview'), minHeight: '14rem' })}
       </div>
     </section>
     <div class="pt-10" data-steps-root>${skeleton('24rem')}</div>
@@ -147,26 +148,27 @@ export async function render(root, { param } = {}) {
     panelHandles.clear();
   };
 
-  if (stepsRes.status !== 'fulfilled' || !Array.isArray(stepsRes.value?.STEPS)) {
+  const rawSteps = stepsRes.status === 'fulfilled' ? stepsRes.value?.getSteps?.() : null;
+  if (!Array.isArray(rawSteps)) {
     if (stepsRes.status !== 'fulfilled') console.error('[ui-shell] steps.js failed', stepsRes.reason);
-    stepsRoot.innerHTML = `<div class="card">${errorState('Prozessschritte konnten nicht geladen werden', stepsRes.reason || 'STEPS fehlt in src/process/steps.js')}</div>`;
+    stepsRoot.innerHTML = `<div class="card">${errorState(tr('Prozessschritte konnten nicht geladen werden', 'Process steps could not be loaded'), stepsRes.reason || tr('getSteps() fehlt in src/process/steps.js', 'getSteps() missing in src/process/steps.js'))}</div>`;
     return { destroy };
   }
   if (compRes.status !== 'fulfilled') console.error('[ui-shell] components/index.js failed', compRes.reason);
   const components = compRes.status === 'fulfilled' ? compRes.value : null;
 
-  const STEPS = stepsRes.value.STEPS.filter((s) => s && s.id && s.title);
+  const STEPS = rawSteps.filter((s) => s && s.id && s.title);
   const { groups, toneOf } = groupByPhase(STEPS);
   const total = STEPS.length;
 
   root.querySelector('[data-meta]').innerHTML = [
-    `${total} Schritte`,
-    `${groups.filter((g) => g.phase).length || 1} Phasen`,
-    `${STEPS.filter((s) => s.diagram).length + 1} Diagramme`,
-    `${STEPS.filter((s) => s.panel).length} Daten-Panels`,
-  ].map((t) => `<span class="chip num">${esc(t)}</span>`).join('');
+    `${total} ${tr('Schritte', 'steps')}`,
+    `${groups.filter((g) => g.phase).length || 1} ${tr('Phasen', 'phases')}`,
+    `${STEPS.filter((s) => s.diagram).length + 1} ${tr('Diagramme', 'diagrams')}`,
+    `${STEPS.filter((s) => s.panel).length} ${tr('Daten-Panels', 'data panels')}`,
+  ].map((m) => `<span class="chip num">${esc(m)}</span>`).join('');
 
-  const phaseLabels = new Map((stepsRes.value.PHASES || []).map((p) => [p.id, p.label || p.id]));
+  const phaseLabels = new Map((stepsRes.value.getPhases?.() || []).map((p) => [p.id, p.label || p.id]));
   root.querySelector('[data-phases]').innerHTML = groups.map((g, gi) => {
     const first = g.items[0];
     const from = STEPS.indexOf(first) + 1;
@@ -174,8 +176,8 @@ export async function render(root, { param } = {}) {
     return `<li><button type="button" class="phase-link" data-goto="${esc(first.id)}">
       <span class="phase-dot" style="--tone:var(${g.tone})">${gi + 1}</span>
       <span class="min-w-0">
-        <span class="block truncate text-[13px] font-semibold text-fg">${esc(phaseLabels.get(g.phase) || g.phase || 'Schritte')}</span>
-        <span class="num block font-mono text-[11px] text-muted">Schritt ${pad2(from)}${to > from ? `–${pad2(to)}` : ''}</span>
+        <span class="block truncate text-[15px] font-semibold text-fg">${esc(phaseLabels.get(g.phase) || g.phase || tr('Schritte', 'Steps'))}</span>
+        <span class="num block font-mono text-xs text-muted">${tr('Schritt', 'Step')} ${pad2(from)}${to > from ? `–${pad2(to)}` : ''}</span>
       </span>
       ${icon('arrowRight', 'ml-auto size-3.5 flex-none text-muted')}
     </button></li>`;
@@ -185,22 +187,22 @@ export async function render(root, { param } = {}) {
     <div class="sticky top-14 z-30 -mx-4 mb-8 border-b border-line px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden" style="background:var(--c-header)">
       <details data-mobile-toc class="group">
         <summary class="details-summary flex items-center gap-3 rounded-lg py-1.5 text-sm">
-          <span class="toc-num num grid size-6 flex-none place-items-center rounded-full bg-accent font-mono text-[10px] font-semibold text-surface" data-mobile-num>01</span>
+          <span class="toc-num num grid size-6 flex-none place-items-center rounded-full bg-accent font-mono text-[11px] font-semibold text-surface" data-mobile-num>01</span>
           <span class="min-w-0 flex-1 truncate font-medium" data-mobile-title>${esc(STEPS[0]?.title || '')}</span>
-          <span class="num font-mono text-[11px] text-muted" data-mobile-count>1 / ${total}</span>
+          <span class="num font-mono text-xs text-muted" data-mobile-count>1 / ${total}</span>
           <span class="chev text-muted">${icon('chevronRight', 'size-4')}</span>
         </summary>
-        <nav class="max-h-[60dvh] overflow-y-auto pb-2 pt-3" aria-label="Schritte">${tocMarkup(groups, STEPS)}</nav>
+        <nav class="max-h-[60dvh] overflow-y-auto pb-2 pt-3" aria-label="${tr('Schritte', 'Steps')}">${tocMarkup(groups, STEPS)}</nav>
       </details>
     </div>
     <div class="grid gap-10 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-14">
       <aside class="hidden lg:block">
-        <nav class="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pb-8 pr-1" aria-label="Inhaltsverzeichnis">
-          <p class="mb-3 px-2.5 text-[13px] font-semibold">Inhalt</p>
+        <nav class="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pb-8 pr-1" aria-label="${tr('Inhaltsverzeichnis', 'Table of contents')}">
+          <p class="mb-3 px-2.5 text-[15px] font-semibold">${tr('Inhalt', 'Contents')}</p>
           ${tocMarkup(groups, STEPS)}
           <div class="mx-2.5 mt-2 border-t border-line pt-4">
             <div class="bar"><span data-progress style="width:0%"></span></div>
-            <p class="num mt-2 font-mono text-[11px] text-muted" data-progress-label>Schritt 1 von ${total}</p>
+            <p class="num mt-2 font-mono text-xs text-muted" data-progress-label>${tr(`Schritt 1 von ${total}`, `Step 1 of ${total}`)}</p>
           </div>
         </nav>
       </aside>
@@ -220,12 +222,12 @@ export async function render(root, { param } = {}) {
     const spec = PANELS[panelId];
     cleanups.push(onVisible(card, async () => {
       if (!spec) {
-        frame.innerHTML = emptyState('Unbekanntes Panel', `PANEL_ID „${panelId}“ ist nicht definiert.`);
+        frame.innerHTML = emptyState(tr('Unbekanntes Panel', 'Unknown panel'), tr(`PANEL_ID „${panelId}“ ist nicht definiert.`, `PANEL_ID "${panelId}" is not defined.`));
         return;
       }
       const renderFn = components?.[spec.fn];
       if (typeof renderFn !== 'function') {
-        frame.innerHTML = errorState('Visualisierung nicht verfügbar', `${spec.fn} fehlt in src/components/index.js`);
+        frame.innerHTML = errorState(tr('Visualisierung nicht verfügbar', 'Visualization not available'), tr(`${spec.fn} fehlt in src/components/index.js`, `${spec.fn} missing in src/components/index.js`));
         return;
       }
       try {
@@ -247,7 +249,7 @@ export async function render(root, { param } = {}) {
         if (h) panelHandles.add(h);
       } catch (err) {
         console.error(`[ui-shell] panel "${panelId}" failed`, err);
-        if (!disposed) frame.innerHTML = errorState('Visualisierung konnte nicht gerendert werden', err);
+        if (!disposed) frame.innerHTML = errorState(tr('Visualisierung konnte nicht gerendert werden', 'Visualization could not be rendered'), err);
       }
     }, '400px 0px'));
   });
@@ -276,7 +278,7 @@ export async function render(root, { param } = {}) {
       if (r.top < nr.top + 40 || r.bottom > nr.bottom - 40) nav.scrollTop += r.top - nr.top - nr.height / 3;
     }
     if (progress) progress.style.width = `${((idx + 1) / total) * 100}%`;
-    if (progressLabel) progressLabel.textContent = `Schritt ${idx + 1} von ${total}`;
+    if (progressLabel) progressLabel.textContent = tr(`Schritt ${idx + 1} von ${total}`, `Step ${idx + 1} of ${total}`);
     const mNum = stepsRoot.querySelector('[data-mobile-num]');
     const mTitle = stepsRoot.querySelector('[data-mobile-title]');
     const mCount = stepsRoot.querySelector('[data-mobile-count]');

@@ -5,6 +5,7 @@ import {
   svg, h, esc, fmt, fmtPct, linear, logScale, clamp, makeRoot, createTooltip, ttRow, observeWidth,
   listeners, isPending, renderPendingFull, classColor, CLASS_LABELS, CLASSES, tile, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const SPLIT_LABELS = { DS1: 'DS1 · Training', DS2: 'DS2 · Test' };
 
@@ -12,7 +13,7 @@ export function renderDatasetStats(container, data, opts = {}) {
   const per = data && typeof data === 'object' ? data.per_split : null;
   const splits = per && typeof per === 'object' ? Object.keys(per).filter((k) => per[k] && typeof per[k] === 'object') : [];
   if (isPending(data) || !splits.length) {
-    return renderPendingFull(container, data, opts, { title: 'Datensatz-Statistik folgt mit der vollständigen MIT-BIH-Datenbank', iconName: 'database', name: 'dataset' });
+    return renderPendingFull(container, data, opts, { title: tr('Datensatz-Statistik folgt mit der vollständigen MIT-BIH-Datenbank', 'Dataset statistics follow with the complete MIT-BIH database'), iconName: 'database', name: 'dataset' });
   }
   const classes = [...CLASSES, ...new Set(splits.flatMap((sp) => Object.keys(per[sp])).filter((c) => !CLASSES.includes(c)))];
   const count = (sp, c) => Number(per[sp][c]) || 0;
@@ -21,15 +22,15 @@ export function renderDatasetStats(container, data, opts = {}) {
   const classTotal = Object.fromEntries(classes.map((c) => [c, splits.reduce((a, sp) => a + count(sp, c), 0)]));
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Datensatz-Statistik je Split und Klasse', name: 'dataset' });
+  const root = makeRoot(container, { label: tr('Datensatz-Statistik je Split und Klasse', 'Dataset statistics per split and class'), name: 'dataset' });
   const tiles = h('div', { class: 'ekc-tiles', style: { marginBottom: '12px' } }, root);
-  for (const sp of splits) tile(tiles, { label: SPLIT_LABELS[sp] || sp, value: fmt(totals[sp]), sub: 'Herzschläge' });
-  if (data.records_available != null) tile(tiles, { label: 'Records', value: fmt(data.records_available), sub: data.status && data.status !== 'complete' ? `Status: ${data.status}` : 'verfügbar' });
+  for (const sp of splits) tile(tiles, { label: SPLIT_LABELS[sp] || sp, value: fmt(totals[sp]), sub: tr('Herzschläge', 'beats') });
+  if (data.records_available != null) tile(tiles, { label: 'Records', value: fmt(data.records_available), sub: data.status && data.status !== 'complete' ? `Status: ${data.status}` : tr('verfügbar', 'available') });
 
   let mode = 'share';
   const bar = h('div', { class: 'ekc-toolbar' }, root);
-  const seg = h('div', { class: 'ekc-btngroup', role: 'radiogroup', 'aria-label': 'Darstellung' }, bar);
-  const modes = [['share', 'Anteile (100 %)'], ['log', 'Anzahl je Klasse (log)']];
+  const seg = h('div', { class: 'ekc-btngroup', role: 'radiogroup', 'aria-label': tr('Darstellung', 'View') }, bar);
+  const modes = [['share', tr('Anteile (100 %)', 'Shares (100%)')], ['log', tr('Anzahl je Klasse (log)', 'Count per class (log)')]];
   const modeBtns = modes.map(([m, label]) => {
     const b = h('button', { type: 'button', class: 'ekc-chip', role: 'radio', 'aria-checked': String(m === mode), 'aria-pressed': String(m === mode), text: label }, seg);
     ls.on(b, 'click', () => { mode = m; modeBtns.forEach((x, i) => { const on = modes[i][0] === m; x.setAttribute('aria-checked', String(on)); x.setAttribute('aria-pressed', String(on)); }); draw(); });
@@ -45,7 +46,7 @@ export function renderDatasetStats(container, data, opts = {}) {
   // Table
   const tblBox = h('div', { class: 'ekc-scroll' }, root);
   const tbl = h('table', { class: 'ekc-table' }, tblBox);
-  tbl.insertAdjacentHTML('beforeend', `<thead><tr><th scope="col">Klasse</th>${splits.map((sp) => `<th scope="col">${esc(sp)}</th><th scope="col">Anteil</th>`).join('')}</tr></thead>`);
+  tbl.insertAdjacentHTML('beforeend', `<thead><tr><th scope="col">${tr('Klasse', 'Class')}</th>${splits.map((sp) => `<th scope="col">${esc(sp)}</th><th scope="col">${tr('Anteil', 'Share')}</th>`).join('')}</tr></thead>`);
   const tb = h('tbody', {}, tbl);
   for (const c of classes) {
     tb.insertAdjacentHTML('beforeend', `<tr><td><span style="display:inline-flex;align-items:center;gap:7px"><i class="ekc-dot" style="--sw:${classColor(c)}"></i><b>${esc(c)}</b><span style="color:var(--c-muted)">${esc(CLASS_LABELS[c] || '')}</span></span></td>${splits.map((sp) => `<td>${fmt(count(sp, c))}</td><td style="color:var(--c-muted)">${totals[sp] ? fmtPct(count(sp, c) / totals[sp], 2) : '–'}</td>`).join('')}</tr>`);
@@ -57,7 +58,10 @@ export function renderDatasetStats(container, data, opts = {}) {
     const major = nonZero.reduce((a, c) => (classTotal[c] > classTotal[a] ? c : a));
     const minor = nonZero.reduce((a, c) => (classTotal[c] < classTotal[a] ? c : a));
     const ratio = Math.round(classTotal[major] / classTotal[minor]);
-    note(root, `Starkes Klassenungleichgewicht: ${major} stellt ${fmtPct(classTotal[major] / grand, 1)} aller Beats, ${minor} nur ${fmtPct(classTotal[minor] / grand, 2)} (≈ 1 : ${fmt(ratio)}). Deshalb Klassengewichte im Loss und Macro-F1 bzw. Sensitivität/PPV je Klasse statt Accuracy.`, 'alert');
+    note(root, tr(
+      `Starkes Klassenungleichgewicht: ${major} stellt ${fmtPct(classTotal[major] / grand, 1)} aller Beats, ${minor} nur ${fmtPct(classTotal[minor] / grand, 2)} (≈ 1 : ${fmt(ratio)}). Deshalb Klassengewichte im Loss und Macro-F1 bzw. Sensitivität/PPV je Klasse statt Accuracy.`,
+      `Strong class imbalance: ${major} accounts for ${fmtPct(classTotal[major] / grand, 1)} of all beats, ${minor} only ${fmtPct(classTotal[minor] / grand, 2)} (≈ 1 : ${fmt(ratio)}). Hence class weights in the loss and macro-F1 or per-class sensitivity/PPV instead of accuracy.`,
+    ), 'alert');
   }
 
   let width = 0;
@@ -74,7 +78,7 @@ export function renderDatasetStats(container, data, opts = {}) {
       // 0 / 50 / 100 % guides
       for (const v of [0, 0.25, 0.5, 0.75, 1]) {
         svg('line', { x1: x(v), x2: x(v), y1: top - 2, y2: H - 18, class: 'ekc-gridline' }, s);
-        svg('text', { x: x(v), y: H - 4, 'text-anchor': v === 0 ? 'start' : v === 1 ? 'end' : 'middle', class: 'ekc-tick', text: `${fmt(v * 100)} %` }, s);
+        svg('text', { x: x(v), y: H - 4, 'text-anchor': v === 0 ? 'start' : v === 1 ? 'end' : 'middle', class: 'ekc-tick', text: `${fmt(v * 100)}${tr(' %', '%')}` }, s);
       }
       splits.forEach((sp, r) => {
         const y = top + r * (rowH + gap);
@@ -122,7 +126,7 @@ export function renderDatasetStats(container, data, opts = {}) {
   }
 
   function bindTip(el, sp, c) {
-    const html = () => `<div class="ekc-tt-title">${esc(sp)} · Klasse ${esc(c)}</div>${ttRow(CLASS_LABELS[c] || c, fmt(count(sp, c)), classColor(c))}${ttRow(`Anteil an ${sp}`, totals[sp] ? fmtPct(count(sp, c) / totals[sp], 2) : '–')}`;
+    const html = () => `<div class="ekc-tt-title">${esc(sp)} · ${tr('Klasse', 'Class')} ${esc(c)}</div>${ttRow(CLASS_LABELS[c] || c, fmt(count(sp, c)), classColor(c))}${ttRow(tr(`Anteil an ${sp}`, `Share of ${sp}`), totals[sp] ? fmtPct(count(sp, c) / totals[sp], 2) : '–')}`;
     el.addEventListener('pointermove', (e) => tip.show(html(), e.clientX, e.clientY));
     el.addEventListener('pointerleave', () => tip.hide());
   }

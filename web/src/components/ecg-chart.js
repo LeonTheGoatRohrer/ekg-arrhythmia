@@ -5,8 +5,9 @@
 import {
   svg, h, esc, fmt, fmtClock, linear, niceTicks, extent, clamp, seriesPath, axisBottom, axisLeft,
   makeRoot, createTooltip, ttRow, observeWidth, listeners, chip, iconButton, createBrush,
-  isPending, renderMissingExport, classColor, CLASS_LABELS, CLASSES, nextId, note,
+  isPending, renderMissingExport, classColor, CLASS_LABELS, CLASSES, nextId, note, exportText,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const M = { top: 30, right: 14, bottom: 36, left: 50 };
 const OVERVIEW_H = 46;
@@ -17,7 +18,7 @@ export function renderEcgChart(container, data, opts = {}) {
   const raw = Array.isArray(data?.raw) ? data.raw : [];
   const filt = Array.isArray(data?.filtered) ? data.filtered : [];
   if (isPending(data) || (!raw.length && !filt.length)) {
-    return renderMissingExport(container, opts, { title: 'EKG-Signal noch nicht verfügbar', file: 'signal_demo.json', iconName: 'pulse', name: 'ecg' });
+    return renderMissingExport(container, opts, { title: tr('EKG-Signal noch nicht verfügbar', 'ECG signal not available yet'), file: 'signal_demo.json', iconName: 'pulse', name: 'ecg' });
   }
 
   const fs = Number(data.fs) || 360;
@@ -34,21 +35,21 @@ export function renderEcgChart(container, data, opts = {}) {
   let width = 0;
 
   const ls = listeners();
-  const root = makeRoot(container, { label: `EKG-Signal Record ${record}`, name: 'ecg' });
+  const root = makeRoot(container, { label: tr(`EKG-Signal Record ${record}`, `ECG signal, record ${record}`), name: 'ecg' });
 
   // --- Toolbar -------------------------------------------------------------
   const bar = h('div', { class: 'ekc-toolbar' }, root);
-  const chips = h('div', { class: 'ekc-btngroup', role: 'group', 'aria-label': 'Ebenen ein-/ausblenden', style: { flexWrap: 'wrap', gap: '6px' } }, bar);
-  if (raw.length) chip(chips, { label: 'Rohsignal', color: 'var(--c-raw)', pressed: show.raw, onToggle: (v) => { show.raw = v; draw(); } });
-  if (filt.length) chip(chips, { label: 'Gefiltert', color: 'var(--c-filtered)', pressed: show.filtered, onToggle: (v) => { show.filtered = v; draw(); } });
-  if (peaks.length) chip(chips, { label: 'R-Zacken', color: 'var(--c-peak)', dot: true, pressed: show.peaks, onToggle: (v) => { show.peaks = v; draw(); } });
-  if (anns.length) chip(chips, { label: 'Annotationen', color: 'var(--c-accent-2)', dot: true, pressed: show.ann, onToggle: (v) => { show.ann = v; draw(); } });
+  const chips = h('div', { class: 'ekc-btngroup', role: 'group', 'aria-label': tr('Ebenen ein-/ausblenden', 'Show/hide layers'), style: { flexWrap: 'wrap', gap: '6px' } }, bar);
+  if (raw.length) chip(chips, { label: tr('Rohsignal', 'Raw'), color: 'var(--c-raw)', pressed: show.raw, onToggle: (v) => { show.raw = v; draw(); } });
+  if (filt.length) chip(chips, { label: tr('Gefiltert', 'Filtered'), color: 'var(--c-filtered)', pressed: show.filtered, onToggle: (v) => { show.filtered = v; draw(); } });
+  if (peaks.length) chip(chips, { label: tr('R-Zacken', 'R peaks'), color: 'var(--c-peak)', dot: true, pressed: show.peaks, onToggle: (v) => { show.peaks = v; draw(); } });
+  if (anns.length) chip(chips, { label: tr('Annotationen', 'Annotations'), color: 'var(--c-accent-2)', dot: true, pressed: show.ann, onToggle: (v) => { show.ann = v; draw(); } });
   h('span', { class: 'ekc-spacer' }, bar);
   const zoomGrp = h('div', { class: 'ekc-btngroup', role: 'group', 'aria-label': 'Zoom' }, bar);
   const viewLabel = h('span', { class: 'ekc-meta ekc-num', style: { marginRight: '4px' }, 'aria-live': 'polite' }, zoomGrp);
-  iconButton(zoomGrp, { iconName: 'minus', label: 'Herauszoomen', onClick: () => zoom(1.6) });
-  iconButton(zoomGrp, { iconName: 'plus', label: 'Hineinzoomen', onClick: () => zoom(1 / 1.6) });
-  iconButton(zoomGrp, { iconName: 'reset', label: 'Gesamtes Fenster anzeigen', onClick: () => setView(0, dur) });
+  iconButton(zoomGrp, { iconName: 'minus', label: tr('Herauszoomen', 'Zoom out'), onClick: () => zoom(1.6) });
+  iconButton(zoomGrp, { iconName: 'plus', label: tr('Hineinzoomen', 'Zoom in'), onClick: () => zoom(1 / 1.6) });
+  iconButton(zoomGrp, { iconName: 'reset', label: tr('Gesamtes Fenster anzeigen', 'Show entire window'), onClick: () => setView(0, dur) });
 
   // --- SVG skeleton (persistent nodes keep pointer capture during drags) ----
   const wrap = h('div', { style: { position: 'relative' } }, root);
@@ -60,7 +61,7 @@ export function renderEcgChart(container, data, opts = {}) {
   const gOver = svg('g', { 'pointer-events': 'none' }, s);
   const hit = svg('rect', {
     class: 'ekc-hit ekc-plot', tabindex: 0, role: 'application',
-    'aria-label': 'EKG-Plot. Pfeiltasten: verschieben, Plus/Minus: zoomen, 0: alles anzeigen',
+    'aria-label': tr('EKG-Plot. Pfeiltasten: verschieben, Plus/Minus: zoomen, 0: alles anzeigen', 'ECG plot. Arrow keys: pan, plus/minus: zoom, 0: show all'),
   }, s);
   const gBrush = svg('g', {}, s);
   const tip = createTooltip(root);
@@ -69,21 +70,27 @@ export function renderEcgChart(container, data, opts = {}) {
   const foot = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px 16px', alignItems: 'center', marginTop: '8px' } }, root);
   const presentCls = CLASSES.filter((c) => beatAnns.some((a) => a.aami === c));
   if (presentCls.length) {
-    const lg = h('div', { class: 'ekc-legend', 'aria-label': 'AAMI-Klassen im Ausschnitt' }, foot);
-    h('span', { text: 'Annotationen:' }, lg);
+    const lg = h('div', { class: 'ekc-legend', 'aria-label': tr('AAMI-Klassen im Ausschnitt', 'AAMI classes in this window') }, foot);
+    h('span', { text: tr('Annotationen:', 'Annotations:') }, lg);
     for (const c of presentCls) {
       const cnt = beatAnns.filter((a) => a.aami === c).length;
       h('span', { class: 'ekc-legend-item', html: `<i class="ekc-dot" style="--sw:${classColor(c)}"></i><b style="color:${classColor(c)}">${c}</b> ${esc(CLASS_LABELS[c])} <span class="ekc-num">(${cnt})</span>` }, lg);
     }
   }
-  note(root, `${data.source || `MIT-BIH Record ${record}`} · ${fmt(fs)} Hz · Fenster ab ${fmtClock(t0, 1)} min:s (${fmt(t0, 1)} s), ${fmt(dur, 1)} s lang. Ziehen oder Strg/Shift + Mausrad zum Verschieben/Zoomen.`);
+  note(root, tr(
+    `${data.source || `MIT-BIH Record ${record}`} · ${fmt(fs)} Hz · Fenster ab ${fmtClock(t0, 1)} min:s (${fmt(t0, 1)} s), ${fmt(dur, 1)} s lang. Ziehen oder Strg/Shift + Mausrad zum Verschieben/Zoomen.`,
+    `${exportText(data.source) || `MIT-BIH record ${record}`} · ${fmt(fs)} Hz · window from ${fmtClock(t0, 1)} min:s (${fmt(t0, 1)} s), ${fmt(dur, 1)} s long. Drag or Ctrl/Shift + mouse wheel to pan/zoom.`,
+  ));
 
   let geo = null;
   let brush = null;
 
   function describe() {
     const cls = CLASSES.map((c) => [c, beatAnns.filter((a) => a.aami === c).length]).filter(([, k]) => k).map(([c, k]) => `${k}× ${c}`).join(', ');
-    return `EKG, Record ${record}, ${fmt(dur, 1)} Sekunden ab ${fmt(t0, 1)} s, ${peaks.length} detektierte R-Zacken${cls ? `, Annotationen: ${cls}` : ''}.`;
+    return tr(
+      `EKG, Record ${record}, ${fmt(dur, 1)} Sekunden ab ${fmt(t0, 1)} s, ${peaks.length} detektierte R-Zacken${cls ? `, Annotationen: ${cls}` : ''}.`,
+      `ECG, record ${record}, ${fmt(dur, 1)} seconds from ${fmt(t0, 1)} s, ${peaks.length} detected R peaks${cls ? `, annotations: ${cls}` : ''}.`,
+    );
   }
 
   function setView(a, b, fromBrush = false) {
@@ -131,7 +138,7 @@ export function renderEcgChart(container, data, opts = {}) {
     for (const p of peaks) svg('line', { x1: ox(p), x2: ox(p), y1: ovY + OVERVIEW_H - 4, y2: ovY + OVERVIEW_H - 1, style: { stroke: 'var(--c-peak)' } }, gBrush);
     brush = createBrush(gBrush, {
       x0: plot.x0, x1: plot.x1, y: ovY, height: OVERVIEW_H, domain: [0, dur], view, minSpan: Math.min(MIN_SPAN, dur),
-      label: 'Sichtbarer Zeitausschnitt', onChange: (a, b) => setView(a, b, true),
+      label: tr('Sichtbarer Zeitausschnitt', 'Visible time window'), onChange: (a, b) => setView(a, b, true),
     });
     draw();
   }
@@ -176,7 +183,7 @@ export function renderEcgChart(container, data, opts = {}) {
     const xt = niceTicks(t0 + a, t0 + b, Math.max(3, Math.round((plot.x1 - plot.x0) / 90)));
     const xd = Math.max(0, Math.min(3, -Math.floor(Math.log10(xt.step || 1) + 1e-9)));
     const xAbs = linear(t0 + a, t0 + b, plot.x0, plot.x1);
-    axisBottom(gMain, xAbs, xt, plot.y1, { format: (v) => fmtClock(v, xd), title: 'Zeit im Record (min:s)', titleY: plot.y1 + 31 });
+    axisBottom(gMain, xAbs, xt, plot.y1, { format: (v) => fmtClock(v, xd), title: tr('Zeit im Record (min:s)', 'Time in record (min:s)'), titleY: plot.y1 + 31 });
     const yStep = pxPerMv * 0.5 >= 18 ? 0.5 : 1;
     const yt = [];
     for (let v = Math.ceil(lo / yStep) * yStep; v <= hi + 1e-9; v += yStep) yt.push(+v.toFixed(3));
@@ -218,7 +225,9 @@ export function renderEcgChart(container, data, opts = {}) {
         const bw = Math.max(15, sym.length * 7 + 8);
         svg('rect', { x: px - bw / 2, y: plot.y0 - 22, width: bw, height: 16, rx: 5, style: { fill: col, fillOpacity: an.aami ? 0.16 : 0.08, stroke: col, strokeOpacity: 0.5 } }, lg);
         svg('text', { x: px, y: plot.y0 - 10.5, 'text-anchor': 'middle', style: { fill: col, fontSize: '10.5px', fontWeight: 700 }, text: sym }, lg);
-        svg('title', { text: an.aami ? `Annotation „${sym}“ → AAMI-Klasse ${an.aami} (${CLASS_LABELS[an.aami]})` : `Annotation „${sym}“ (kein Herzschlag)` }, lg);
+        svg('title', { text: an.aami
+          ? tr(`Annotation „${sym}“ → AAMI-Klasse ${an.aami} (${CLASS_LABELS[an.aami]})`, `Annotation "${sym}" → AAMI class ${an.aami} (${CLASS_LABELS[an.aami]})`)
+          : tr(`Annotation „${sym}“ (kein Herzschlag)`, `Annotation "${sym}" (not a beat)`) }, lg);
       }
     }
 
@@ -240,12 +249,12 @@ export function renderEcgChart(container, data, opts = {}) {
     gOver.replaceChildren();
     svg('line', { x1: xiOf(i), x2: xiOf(i), y1: plot.y0, y2: plot.y1, class: 'ekc-crosshair' }, gOver);
     const rows = [];
-    if (show.raw && raw.length) { svg('circle', { cx: xiOf(i), cy: y(raw[i]), r: 3.2, style: { fill: 'var(--c-raw)', stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver); rows.push(ttRow('Rohsignal', `${fmt(raw[i], 3)} mV`, 'var(--c-raw)')); }
-    if (show.filtered && filt.length) { svg('circle', { cx: xiOf(i), cy: y(filt[i]), r: 3.2, style: { fill: 'var(--c-filtered)', stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver); rows.push(ttRow('Gefiltert', `${fmt(filt[i], 3)} mV`, 'var(--c-filtered)')); }
+    if (show.raw && raw.length) { svg('circle', { cx: xiOf(i), cy: y(raw[i]), r: 3.2, style: { fill: 'var(--c-raw)', stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver); rows.push(ttRow(tr('Rohsignal', 'Raw'), `${fmt(raw[i], 3)} mV`, 'var(--c-raw)')); }
+    if (show.filtered && filt.length) { svg('circle', { cx: xiOf(i), cy: y(filt[i]), r: 3.2, style: { fill: 'var(--c-filtered)', stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver); rows.push(ttRow(tr('Gefiltert', 'Filtered'), `${fmt(filt[i], 3)} mV`, 'var(--c-filtered)')); }
     // Nearest beat annotation within 200 ms
     let best = null;
     for (const an of beatAnns) { const d = Math.abs(an.sample - i); if (d <= 0.2 * fs && (!best || d < Math.abs(best.sample - i))) best = an; }
-    if (best) rows.push(ttRow(`Schlag „${best.symbol}“`, `${best.aami} · ${CLASS_LABELS[best.aami] || ''}`, classColor(best.aami)));
+    if (best) rows.push(ttRow(tr(`Schlag „${best.symbol}“`, `Beat "${best.symbol}"`), `${best.aami} · ${CLASS_LABELS[best.aami] || ''}`, classColor(best.aami)));
     tip.show(`<div class="ekc-tt-title">t = ${fmtClock(t0 + i / fs, 3)} (min:s)</div>${rows.join('')}`, clientX, clientY);
   }
   const xiOf = (i) => geo.x(i / fs);

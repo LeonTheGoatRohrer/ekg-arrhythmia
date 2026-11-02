@@ -3,7 +3,8 @@
 // on any failure the promise resolves to null (never rejects).
 
 const cache = new Map();
-let apiUnavailable = false;
+// Static builds (GitHub Pages: VITE_STATIC_SITE=1) have no API server, so never ask it.
+let apiUnavailable = Boolean(import.meta.env.VITE_STATIC_SITE);
 
 async function tryFetch(url) {
   try {
@@ -42,11 +43,12 @@ export function loadJSON(name) {
 export function clearCache(name) {
   if (name) cache.delete(name);
   else cache.clear();
-  apiUnavailable = false;
+  apiUnavailable = Boolean(import.meta.env.VITE_STATIC_SITE);
 }
 
 /** Fetch a JSON API endpoint directly (no cache); null on failure. */
 export async function fetchApi(path) {
+  if (import.meta.env.VITE_STATIC_SITE) return null;
   const r = await tryFetch(path);
   return r.ok ? r.data : null;
 }

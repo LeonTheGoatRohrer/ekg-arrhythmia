@@ -2,14 +2,17 @@
 // Colours are applied exclusively through CSS custom properties (var(--c-…)) so
 // light/dark switching works without re-rendering.
 
+import { tr, locale } from '../lib/i18n.js';
+
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CLASSES = ['N', 'S', 'V', 'F', 'Q'];
+// Getters so the label follows the current UI language at access time.
 export const CLASS_LABELS = {
-  N: 'Normal',
-  S: 'Supraventrikulär ektop',
-  V: 'Ventrikulär ektop',
-  F: 'Fusion',
-  Q: 'Unklassifizierbar',
+  get N() { return 'Normal'; },
+  get S() { return tr('Supraventrikulär ektop', 'Supraventricular ectopic'); },
+  get V() { return tr('Ventrikulär ektop', 'Ventricular ectopic'); },
+  get F() { return 'Fusion'; },
+  get Q() { return tr('Unklassifizierbar', 'Unknown'); },
 };
 
 export const PENDING_TEXT =
@@ -72,15 +75,16 @@ export function svgTitle(parent, text) {
 }
 
 // ---------------------------------------------------------------------------
-// Number formatting (German)
+// Number formatting (current UI language)
 
 const nfCache = new Map();
 function nf(digits) {
-  const key = digits == null ? 'auto' : digits;
+  const loc = locale();
+  const key = `${loc}|${digits == null ? 'auto' : digits}`;
   if (!nfCache.has(key)) {
     nfCache.set(key, digits == null
-      ? new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 })
-      : new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+      ? new Intl.NumberFormat(loc, { maximumFractionDigits: 3 })
+      : new Intl.NumberFormat(loc, { minimumFractionDigits: digits, maximumFractionDigits: digits }));
   }
   return nfCache.get(key);
 }
@@ -103,12 +107,12 @@ export function fmtClock(sec, digits = 0) {
   const m = Math.floor(total / 60);
   const rest = total - m * 60;
   const [int, frac] = rest.toFixed(digits).split('.');
-  return `${sign}${m}:${int.padStart(2, '0')}${frac ? ',' + frac : ''}`;
+  return `${sign}${m}:${int.padStart(2, '0')}${frac ? tr(',', '.') + frac : ''}`;
 }
 
 export function fmtPct(x, digits = 1) {
   if (x == null || !Number.isFinite(Number(x))) return '–';
-  return `${fmt(Number(x) * 100, digits)} %`;
+  return `${fmt(Number(x) * 100, digits)}${tr(' %', '%')}`;
 }
 
 /** Compact significant-digit formatting (thresholds, a.u. values). */
@@ -395,10 +399,41 @@ export function isPending(data) {
   return data == null || (typeof data === 'object' && !Array.isArray(data) && data.status === 'pending');
 }
 
+// Known German texts from the pipeline's JSON exports (exact match) -> English.
+const EXPORT_TEXT_EN = {
+  'MIT-BIH Arrhythmia Database, Record 100 (echte Daten, PhysioNet; Ableitung MLII)':
+    'MIT-BIH Arrhythmia Database, record 100 (real data, PhysioNet; lead MLII)',
+  'Baseline (Median 200 ms + 600 ms) → Butterworth-Bandpass 0,5–40 Hz, Ordnung 4, nullphasig (sosfiltfilt)':
+    'Baseline (median 200 ms + 600 ms) → Butterworth band-pass 0.5–40 Hz, order 4, zero-phase (sosfiltfilt)',
+  'Pan-Tompkins auf dem gesamten vorverarbeiteten Record gegen die Experten-Annotationen (nur Herzschlag-Symbole), Toleranz ±150 ms. Ein einzelner Record ist kein Datenbank-Benchmark.':
+    'Pan-Tompkins on the entire preprocessed record against the expert annotations (beat symbols only), tolerance ±150 ms. A single record is not a database benchmark.',
+  'Echte Herzschläge aus Record 100 (vorverarbeitet, in mV). Das Modell erhält dieselben Fenster zusätzlich pro Schlag z-normalisiert.':
+    'Real beats from record 100 (preprocessed, in mV). The model receives the same windows, additionally z-normalized per beat.',
+  'Gefiltertes Signal (MLII) mit den Schlag-Annotationen der Kardiologen (AAMI-Klasse), kein Modell-Output. Für die Anzeige auf 180 Hz ausgedünnt.':
+    "Filtered signal (MLII) with the cardiologists' beat annotations (AAMI class), not model output. Downsampled to 180 Hz for display.",
+};
+// Patterned texts: [regex, replacement].
+const EXPORT_PATTERNS_EN = [
+  [/^Automatisch gewählt: das Fenster mit den seltensten Schlagklassen des Records \((.+) neben Normalschlägen\)\.$/,
+    'Selected automatically: the window with the rarest beat classes in the record ($1 alongside normal beats).'],
+];
+
+/**
+ * German free text from a pipeline export, shown in the current UI language.
+ * Known texts are translated, a few patterned ones via regex; unknown German text is hidden in English.
+ */
+export function exportText(text) {
+  const s = typeof text === 'string' ? text.trim() : '';
+  if (!s || locale() !== 'en-US') return s;
+  if (EXPORT_TEXT_EN[s]) return EXPORT_TEXT_EN[s];
+  for (const [re, en] of EXPORT_PATTERNS_EN) if (re.test(s)) return s.replace(re, en);
+  return '';
+}
+
 /** Reason string from data or the raw file (opts.raw), if any. */
 export function pendingReason(data, opts) {
   const r = (data && typeof data === 'object' && data.reason) || (opts?.raw && typeof opts.raw === 'object' && opts.raw.reason);
-  return typeof r === 'string' && r.trim() ? r.trim() : '';
+  return typeof r === 'string' && r.trim() ? exportText(r) : '';
 }
 
 /**
@@ -410,7 +445,7 @@ export function renderEmpty(container, { title, text, detail, iconName = 'chart'
   root.setAttribute('role', 'status');
   const box = h('div', { class: 'ekc-empty ekc-fade-in' }, root);
   h('div', { class: 'ekc-empty-icon', html: icon(iconName, 22) }, box);
-  h('div', { class: 'ekc-empty-title', text: title || 'Noch keine Daten' }, box);
+  h('div', { class: 'ekc-empty-title', text: title || tr('Noch keine Daten', 'No data yet') }, box);
   if (text) h('p', { class: 'ekc-empty-text', text }, box);
   if (detail && detail !== text) {
     // `code` spans in the pipeline's reason text become <code> elements (built as DOM nodes,
@@ -429,7 +464,7 @@ export function renderEmpty(container, { title, text, detail, iconName = 'chart'
 export function renderPendingFull(container, data, opts, { title, iconName, name }) {
   return renderEmpty(container, {
     title,
-    text: PENDING_TEXT,
+    text: tr(PENDING_TEXT, 'Generated by the full training run on the complete MIT-BIH database (physionet.org currently unreachable).'),
     detail: pendingReason(data, opts) ? `Status: ${pendingReason(data, opts)}` : '',
     iconName,
     name,
@@ -440,7 +475,10 @@ export function renderPendingFull(container, data, opts, { title, iconName, name
 export function renderMissingExport(container, opts, { title, file, iconName, name, text }) {
   return renderEmpty(container, {
     title,
-    text: text || `Die Datei ${opts?.dataFile || file} wurde noch nicht von der Pipeline exportiert. Sie wird aus dem echten MIT-BIH-Record 100 berechnet.`,
+    text: text || tr(
+      `Die Datei ${opts?.dataFile || file} wurde noch nicht von der Pipeline exportiert. Sie wird aus dem echten MIT-BIH-Record 100 berechnet.`,
+      `The file ${opts?.dataFile || file} has not been exported by the pipeline yet. It is computed from the real MIT-BIH record 100.`,
+    ),
     iconName,
     name,
   });
@@ -560,7 +598,7 @@ export function nextId(prefix = 'ekc') {
  * Domain [d0,d1]; the window [v0,v1] is moved/resized by pointer or keyboard.
  * Returns { set(v0, v1), destroy() }.
  */
-export function createBrush(g, { x0, x1, y, height, domain, view, minSpan, onChange, label = 'Ausschnitt' }) {
+export function createBrush(g, { x0, x1, y, height, domain, view, minSpan, onChange, label = tr('Ausschnitt', 'Window') }) {
   const [d0, d1] = domain;
   const sc = linear(d0, d1, x0, x1);
   let [v0, v1] = view;
@@ -568,7 +606,7 @@ export function createBrush(g, { x0, x1, y, height, domain, view, minSpan, onCha
   const shadeR = svg('rect', { class: 'ekc-brush-shade', y, height }, g);
   const win = svg('rect', {
     class: 'ekc-brush-win', y: y + 0.5, height: height - 1, rx: 4, tabindex: 0, role: 'slider',
-    'aria-label': `${label}: mit Pfeiltasten verschieben, Plus/Minus zoomen`, 'aria-valuemin': d0, 'aria-valuemax': d1,
+    'aria-label': tr(`${label}: mit Pfeiltasten verschieben, Plus/Minus zoomen`, `${label}: move with arrow keys, zoom with plus/minus`), 'aria-valuemin': d0, 'aria-valuemax': d1,
   }, g);
   const hL = svg('rect', { class: 'ekc-brush-handle', width: 7, height: Math.min(22, height - 6), rx: 2.5 }, g);
   const hR = svg('rect', { class: 'ekc-brush-handle', width: 7, height: Math.min(22, height - 6), rx: 2.5 }, g);
@@ -582,7 +620,7 @@ export function createBrush(g, { x0, x1, y, height, domain, view, minSpan, onCha
     hL.setAttribute('x', a - 3.5); hL.setAttribute('y', hy);
     hR.setAttribute('x', b - 3.5); hR.setAttribute('y', hy);
     win.setAttribute('aria-valuenow', v0.toFixed(2));
-    win.setAttribute('aria-valuetext', `${fmt(v0, 1)} bis ${fmt(v1, 1)} s`);
+    win.setAttribute('aria-valuetext', tr(`${fmt(v0, 1)} bis ${fmt(v1, 1)} s`, `${fmt(v0, 1)} to ${fmt(v1, 1)} s`));
   }
   function commit(a, b) {
     const span = Math.max(minSpan, Math.min(d1 - d0, b - a));

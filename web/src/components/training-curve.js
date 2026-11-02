@@ -5,6 +5,7 @@ import {
   svg, h, fmt, linear, niceTicks, niceDomain, clamp, axisBottom, axisLeft, makeRoot,
   createTooltip, ttRow, observeWidth, listeners, isPending, renderPendingFull, chip, tile, stepDigits,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 const M = { top: 22, right: 18, bottom: 40, left: 54 };
 
@@ -19,13 +20,13 @@ export function renderTrainingCurve(container, data, opts = {}) {
   const hist = toHistory(data);
   const rows = (hist || []).filter((r) => r && Number.isFinite(Number(r.epoch))).sort((a, b) => a.epoch - b.epoch);
   if (isPending(data) || rows.length < 1) {
-    return renderPendingFull(container, data, opts, { title: 'Trainingsverlauf folgt nach dem Volltraining', iconName: 'clock', name: 'training' });
+    return renderPendingFull(container, data, opts, { title: tr('Trainingsverlauf folgt nach dem Volltraining', 'Training history available after the full training'), iconName: 'clock', name: 'training' });
   }
 
   const has = (k) => rows.some((r) => Number.isFinite(r[k]));
   const lossSeries = [
-    has('train_loss') && { key: 'train_loss', label: 'Trainings-Loss', color: 'var(--c-accent-2)', dash: null },
-    has('val_loss') && { key: 'val_loss', label: 'Validierungs-Loss', color: 'var(--c-filtered)', dash: '5 4' },
+    has('train_loss') && { key: 'train_loss', label: tr('Trainings-Loss', 'Training loss'), color: 'var(--c-accent-2)', dash: null },
+    has('val_loss') && { key: 'val_loss', label: tr('Validierungs-Loss', 'Validation loss'), color: 'var(--c-filtered)', dash: '5 4' },
   ].filter(Boolean);
   const hasF1 = has('val_macro_f1');
   const visible = { train_loss: true, val_loss: true, val_macro_f1: true };
@@ -33,26 +34,27 @@ export function renderTrainingCurve(container, data, opts = {}) {
   const best = hasF1 ? rows.reduce((b, r) => (Number.isFinite(r.val_macro_f1) && r.val_macro_f1 > (b?.val_macro_f1 ?? -Infinity) ? r : b), null) : null;
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Trainingsverlauf des 1D-CNN', name: 'training' });
+  const root = makeRoot(container, { label: tr('Trainingsverlauf des 1D-CNN', 'Training history of the 1D CNN'), name: 'training' });
   const tiles = h('div', { class: 'ekc-tiles', style: { marginBottom: '12px' } }, root);
-  tile(tiles, { label: 'Epochen', value: fmt(rows.length) });
-  if (best) tile(tiles, { label: 'Bestes Val-Macro-F1', value: fmt(best.val_macro_f1, 3), sub: `Epoche ${fmt(best.epoch)}`, color: 'var(--c-accent)' });
+  tile(tiles, { label: tr('Epochen', 'Epochs'), value: fmt(rows.length) });
+  if (best) tile(tiles, { label: tr('Bestes Val-Macro-F1', 'Best val. macro F1'), value: fmt(best.val_macro_f1, 3), sub: `${tr('Epoche', 'Epoch')} ${fmt(best.epoch)}`, color: 'var(--c-accent)' });
   const last = rows[rows.length - 1];
-  if (Number.isFinite(last.train_loss)) tile(tiles, { label: 'Letzter Train-Loss', value: fmt(last.train_loss, 3), color: 'var(--c-accent-2)' });
-  if (Number.isFinite(last.val_loss)) tile(tiles, { label: 'Letzter Val-Loss', value: fmt(last.val_loss, 3), color: 'var(--c-filtered)' });
+  if (Number.isFinite(last.train_loss)) tile(tiles, { label: tr('Letzter Train-Loss', 'Last train loss'), value: fmt(last.train_loss, 3), color: 'var(--c-accent-2)' });
+  if (Number.isFinite(last.val_loss)) tile(tiles, { label: tr('Letzter Val-Loss', 'Last val. loss'), value: fmt(last.val_loss, 3), color: 'var(--c-filtered)' });
 
   const bar = h('div', { class: 'ekc-toolbar' }, root);
   for (const sr of lossSeries) chip(bar, { label: sr.label, color: sr.color, onToggle: (v) => { visible[sr.key] = v; draw(); } });
-  if (hasF1) chip(bar, { label: 'Val-Macro-F1', color: 'var(--c-accent)', onToggle: (v) => { visible.val_macro_f1 = v; draw(); } });
+  if (hasF1) chip(bar, { label: tr('Val-Macro-F1', 'Val. macro F1'), color: 'var(--c-accent)', onToggle: (v) => { visible.val_macro_f1 = v; draw(); } });
 
   const wrap = h('div', { style: { position: 'relative' } }, root);
   const s = svg('svg', {
     role: 'img', style: { touchAction: 'pan-y' },
-    'aria-label': `Trainingsverlauf über ${rows.length} Epochen${best ? `, bestes Validierungs-Macro-F1 ${fmt(best.val_macro_f1, 3)} in Epoche ${best.epoch}` : ''}.`,
+    'aria-label': tr(`Trainingsverlauf über ${rows.length} Epochen${best ? `, bestes Validierungs-Macro-F1 ${fmt(best.val_macro_f1, 3)} in Epoche ${best.epoch}` : ''}.`,
+      `Training history over ${rows.length} epochs${best ? `, best validation macro F1 ${fmt(best.val_macro_f1, 3)} in epoch ${best.epoch}` : ''}.`),
   }, wrap);
   const gMain = svg('g', {}, s);
   const gOver = svg('g', { 'pointer-events': 'none' }, s);
-  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': 'Trainingskurven. Pfeiltasten wählen die Epoche.' }, s);
+  const hit = svg('rect', { class: 'ekc-hit ekc-plot', tabindex: 0, 'aria-label': tr('Trainingskurven. Pfeiltasten wählen die Epoche.', 'Training curves. Arrow keys select the epoch.') }, s);
   const tip = createTooltip(root);
 
   let geo = null, width = 0, cursor = null;
@@ -79,7 +81,7 @@ export function renderTrainingCurve(container, data, opts = {}) {
     const lossVals = rows.flatMap((r) => lossSeries.filter((sr) => visible[sr.key]).map((sr) => r[sr.key])).filter(Number.isFinite);
     const [l0, l1] = lossVals.length ? niceDomain(Math.min(0, ...lossVals), Math.max(...lossVals), 4) : [0, 1];
     const yL = linear(l0, l1, p1.y1, p1.y0);
-    svg('text', { x: x0, y: p1.y0 - 9, class: 'ekc-label', text: 'Loss (gewichtete Kreuzentropie)' }, gMain);
+    svg('text', { x: x0, y: p1.y0 - 9, class: 'ekc-label', text: tr('Loss (gewichtete Kreuzentropie)', 'Loss (weighted cross-entropy)') }, gMain);
     const lt = niceTicks(l0, l1, 4);
     axisLeft(gMain, yL, lt, x0, { format: (v) => fmt(v, stepDigits(lt.step)), gridRight: x1, line: false });
     const xt = niceTicks(e0, e1, Math.min(rows.length, Math.max(2, Math.round((x1 - x0) / 70)))).filter((t) => Number.isInteger(t));
@@ -96,7 +98,7 @@ export function renderTrainingCurve(container, data, opts = {}) {
       const f1v = rows.map((r) => r.val_macro_f1).filter(Number.isFinite);
       const top = Math.min(1, Math.ceil((Math.max(...f1v) + 0.05) * 10) / 10);
       yF = linear(0, top, p2.y1, p2.y0);
-      svg('text', { x: x0, y: p2.y0 - 9, class: 'ekc-label', text: 'Validierungs-Macro-F1' }, gMain);
+      svg('text', { x: x0, y: p2.y0 - 9, class: 'ekc-label', text: tr('Validierungs-Macro-F1', 'Validation macro F1') }, gMain);
       axisLeft(gMain, yF, niceTicks(0, top, 3), x0, { format: (v) => fmt(v, 1), gridRight: x1, line: false });
       const d = pathOf('val_macro_f1', yF);
       const pts = rows.filter((r) => Number.isFinite(r.val_macro_f1));
@@ -106,11 +108,11 @@ export function renderTrainingCurve(container, data, opts = {}) {
         const bx = x(best.epoch), by = yF(best.val_macro_f1);
         svg('circle', { cx: bx, cy: by, r: 5, style: { fill: 'var(--c-accent)', stroke: 'var(--c-surface)', strokeWidth: 2 } }, gMain);
         const anchor = bx > x1 - 90 ? 'end' : 'start';
-        svg('text', { x: bx + (anchor === 'end' ? -8 : 8), y: by - 8, 'text-anchor': anchor, style: { fill: 'var(--c-accent)', fontSize: '11px', fontWeight: 600 }, class: 'ekc-num', text: `Bestwert ${fmt(best.val_macro_f1, 3)} (Ep. ${best.epoch})` }, gMain);
+        svg('text', { x: bx + (anchor === 'end' ? -8 : 8), y: by - 8, 'text-anchor': anchor, style: { fill: 'var(--c-accent)', fontSize: '11px', fontWeight: 600 }, class: 'ekc-num', text: tr(`Bestwert ${fmt(best.val_macro_f1, 3)} (Ep. ${best.epoch})`, `Best ${fmt(best.val_macro_f1, 3)} (ep. ${best.epoch})`) }, gMain);
       }
     }
     const bottom = (p2 || p1).y1;
-    axisBottom(gMain, typeof x.invert === 'function' ? x : linear(e0 - 1, e1 + 1, x0, x1), xt, bottom, { format: (v) => fmt(v), title: 'Epoche', titleY: bottom + 32 });
+    axisBottom(gMain, typeof x.invert === 'function' ? x : linear(e0 - 1, e1 + 1, x0, x1), xt, bottom, { format: (v) => fmt(v), title: tr('Epoche', 'Epoch'), titleY: bottom + 32 });
     hit.setAttribute('x', x0); hit.setAttribute('y', p1.y0);
     hit.setAttribute('width', x1 - x0); hit.setAttribute('height', bottom - p1.y0);
     geo = { x, yL, yF, p1, p2, x0, x1, bottom };
@@ -131,9 +133,9 @@ export function renderTrainingCurve(container, data, opts = {}) {
     }
     if (yF && Number.isFinite(r.val_macro_f1)) {
       svg('circle', { cx: px, cy: yF(r.val_macro_f1), r: 3.8, style: { fill: 'var(--c-accent)', stroke: 'var(--c-surface)', strokeWidth: 1.5 } }, gOver);
-      parts.push(ttRow('Val-Macro-F1', fmt(r.val_macro_f1, 4), 'var(--c-accent)'));
+      parts.push(ttRow(tr('Val-Macro-F1', 'Val. macro F1'), fmt(r.val_macro_f1, 4), 'var(--c-accent)'));
     }
-    const html = `<div class="ekc-tt-title">Epoche ${fmt(r.epoch)}${best && best.epoch === r.epoch ? ' · Bestwert' : ''}</div>${parts.join('')}`;
+    const html = `<div class="ekc-tt-title">${tr('Epoche', 'Epoch')} ${fmt(r.epoch)}${best && best.epoch === r.epoch ? ` · ${tr('Bestwert', 'best')}` : ''}</div>${parts.join('')}`;
     if (clientX != null) tip.show(html, clientX, clientY);
     else { const b = s.getBoundingClientRect(); tip.show(html, b.left + px * (b.width / width), b.top + p1.y0 + 10); }
   }

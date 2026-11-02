@@ -5,6 +5,7 @@ import {
   svg, h, esc, fmt, fmtPct, clamp, makeRoot, createTooltip, ttRow, observeWidth, listeners,
   isPending, renderPendingFull, classColor, CLASS_LABELS, CLASSES, tile, note,
 } from './shared.js';
+import { tr } from '../lib/i18n.js';
 
 function toSummary(data) {
   if (!data || typeof data !== 'object') return null;
@@ -18,7 +19,7 @@ export function renderConfusionMatrix(container, data, opts = {}) {
   const sm = toSummary(data);
   const cm = sm?.confusion;
   if (isPending(data) || !sm || !Array.isArray(cm) || !cm.length || !cm.every((r) => Array.isArray(r) && r.length === cm.length)) {
-    return renderPendingFull(container, data, opts, { title: 'Konfusionsmatrix folgt nach dem Volltraining', iconName: 'grid', name: 'confusion' });
+    return renderPendingFull(container, data, opts, { title: tr('Konfusionsmatrix folgt nach dem Volltraining', 'Confusion matrix available after the full training'), iconName: 'grid', name: 'confusion' });
   }
   const k = cm.length;
   const names = Array.isArray(sm.class_names) && sm.class_names.length === k ? sm.class_names : CLASSES.slice(0, k);
@@ -29,30 +30,32 @@ export function renderConfusionMatrix(container, data, opts = {}) {
   const per = sm.per_class && typeof sm.per_class === 'object' ? sm.per_class : {};
 
   const ls = listeners();
-  const root = makeRoot(container, { label: 'Konfusionsmatrix und Klassenmetriken', name: 'confusion' });
+  const root = makeRoot(container, { label: tr('Konfusionsmatrix und Klassenmetriken', 'Confusion matrix and per-class metrics'), name: 'confusion' });
   const tiles = h('div', { class: 'ekc-tiles', style: { marginBottom: '14px' } }, root);
-  tile(tiles, { label: 'Macro-F1', value: fmt(sm.macro_f1, 3), sub: 'Hauptmetrik', color: 'var(--c-accent)' });
-  tile(tiles, { label: 'Accuracy', value: fmtPct(sm.accuracy, 1), sub: 'dominiert von N' });
-  tile(tiles, { label: 'Test-Beats', value: fmt(total), sub: opts?.raw?.split ? String(opts.raw.split) : 'DS2' });
+  tile(tiles, { label: tr('Macro-F1', 'Macro F1'), value: fmt(sm.macro_f1, 3), sub: tr('Hauptmetrik', 'headline metric'), color: 'var(--c-accent)' });
+  tile(tiles, { label: 'Accuracy', value: fmtPct(sm.accuracy, 1), sub: tr('dominiert von N', 'dominated by N') });
+  tile(tiles, { label: tr('Test-Beats', 'Test beats'), value: fmt(total), sub: opts?.raw?.split ? String(opts.raw.split) : 'DS2' });
 
   const layoutBox = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '18px', alignItems: 'start' } }, root);
   const hmBox = h('div', { style: { position: 'relative', minWidth: 0 } }, layoutBox);
-  const s = svg('svg', { role: 'grid', 'aria-label': `Konfusionsmatrix ${k}×${k}, Zeilen: wahre Klasse, Spalten: vorhergesagte Klasse, zeilennormiert.` }, hmBox);
+  const s = svg('svg', { role: 'grid', 'aria-label': tr(`Konfusionsmatrix ${k}×${k}, Zeilen: wahre Klasse, Spalten: vorhergesagte Klasse, zeilennormiert.`, `Confusion matrix ${k}×${k}, rows: true class, columns: predicted class, row-normalized.`) }, hmBox);
   const tableBox = h('div', { class: 'ekc-scroll', style: { minWidth: 0 } }, layoutBox);
   const tip = createTooltip(root);
 
   // Per-class table
   const metricOf = (c, key) => per?.[c]?.[key];
   const tbl = h('table', { class: 'ekc-table' }, tableBox);
-  h('caption', { text: 'Metriken je Klasse (AAMI EC57)', style: { captionSide: 'top', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'var(--c-text)', padding: '0 8px 6px' } }, tbl);
-  tbl.insertAdjacentHTML('beforeend', `<thead><tr><th scope="col">Klasse</th><th scope="col" title="Sensitivität = TP / (TP + FN)">Sens.</th><th scope="col" title="Positiver Vorhersagewert = TP / (TP + FP)">PPV</th><th scope="col">F1</th><th scope="col" title="Spezifität = TN / (TN + FP)">Spez.</th><th scope="col">Support</th></tr></thead>`);
+  h('caption', { text: tr('Metriken je Klasse (AAMI EC57)', 'Per-class metrics (AAMI EC57)'), style: { captionSide: 'top', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'var(--c-text)', padding: '0 8px 6px' } }, tbl);
+  tbl.insertAdjacentHTML('beforeend', `<thead><tr><th scope="col">${tr('Klasse', 'Class')}</th><th scope="col" title="${tr('Sensitivität', 'Sensitivity')} = TP / (TP + FN)">Sens.</th><th scope="col" title="${tr('Positiver Vorhersagewert', 'Positive predictive value')} = TP / (TP + FP)">PPV</th><th scope="col">F1</th><th scope="col" title="${tr('Spezifität', 'Specificity')} = TN / (TN + FP)">${tr('Spez.', 'Spec.')}</th><th scope="col">Support</th></tr></thead>`);
   const tb = h('tbody', {}, tbl);
   names.forEach((c, i) => {
     const cell = (v) => `<td>${v == null ? '–' : fmtPct(v, 1)}</td>`;
     const f1 = metricOf(c, 'f1');
     tb.insertAdjacentHTML('beforeend', `<tr><th scope="row" style="text-align:left;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--c-text);border-bottom:inherit"><span style="display:inline-flex;align-items:center;gap:7px" title="${esc(CLASS_LABELS[c] || c)}"><i class="ekc-dot" style="--sw:${classColor(c)}"></i><b>${esc(c)}</b></span></th>${cell(metricOf(c, 'sensitivity'))}${cell(metricOf(c, 'ppv'))}<td><b>${f1 == null ? '–' : fmt(f1, 3)}</b></td>${cell(metricOf(c, 'specificity'))}<td>${fmt(metricOf(c, 'support') ?? rowSum[i])}</td></tr>`);
   });
-  note(tableBox, 'Zeilen sind auf die wahre Klasse normiert (Prozent = Anteil der Beats dieser Klasse). Wegen des starken N-Übergewichts sind Sensitivität und PPV für S und V aussagekräftiger als die Accuracy.');
+  note(tableBox, tr(
+    'Zeilen sind auf die wahre Klasse normiert (Prozent = Anteil der Beats dieser Klasse). Wegen des starken N-Übergewichts sind Sensitivität und PPV für S und V aussagekräftiger als die Accuracy.',
+    'Rows are normalized to the true class (percent = share of the beats of that class). Because N beats dominate, sensitivity and PPV for S and V say more than accuracy.'));
 
   let cells = [];
   let focusIdx = 0;
@@ -71,9 +74,9 @@ export function renderConfusionMatrix(container, data, opts = {}) {
     s.setAttribute('height', H);
     const g = svg('g', {}, s);
     // axis titles
-    svg('text', { x: labL + gridW / 2, y: 13, 'text-anchor': 'middle', class: 'ekc-axis-title', text: 'Vorhergesagte Klasse (Pred)' }, g);
+    svg('text', { x: labL + gridW / 2, y: 13, 'text-anchor': 'middle', class: 'ekc-axis-title', text: tr('Vorhergesagte Klasse (Pred)', 'Predicted class') }, g);
     const ty = labT + gridW / 2;
-    svg('text', { x: 12, y: ty, transform: `rotate(-90 12 ${ty})`, 'text-anchor': 'middle', class: 'ekc-axis-title', text: 'Wahre Klasse (True)' }, g);
+    svg('text', { x: 12, y: ty, transform: `rotate(-90 12 ${ty})`, 'text-anchor': 'middle', class: 'ekc-axis-title', text: tr('Wahre Klasse (True)', 'True class') }, g);
     names.forEach((c, j) => {
       svg('text', { x: labL + j * cs + cs / 2, y: labT - 10, 'text-anchor': 'middle', style: { fill: classColor(c), fontWeight: 700, fontSize: '12.5px' }, text: c }, g);
       svg('text', { x: labL - 12, y: labT + j * cs + cs / 2 + 4.5, 'text-anchor': 'end', style: { fill: classColor(c), fontWeight: 700, fontSize: '12.5px' }, text: c }, g);
@@ -90,7 +93,8 @@ export function renderConfusionMatrix(container, data, opts = {}) {
         const cx = labL + j * cs, cy = labT + i * cs;
         const cg = svg('g', {
           role: 'gridcell', tabindex: i * k + j === focusIdx ? 0 : -1,
-          'aria-label': `Wahr ${names[i]}, vorhergesagt ${names[j]}: ${fmt(count)} Beats${v != null ? `, ${fmtPct(v, 1)} der Zeile` : ''}`,
+          'aria-label': tr(`Wahr ${names[i]}, vorhergesagt ${names[j]}: ${fmt(count)} Beats${v != null ? `, ${fmtPct(v, 1)} der Zeile` : ''}`,
+            `True ${names[i]}, predicted ${names[j]}: ${fmt(count)} beats${v != null ? `, ${fmtPct(v, 1)} of the row` : ''}`),
         }, row);
         const strength = v == null ? 0 : v;
         const fill = diag ? 'var(--c-accent)' : 'var(--c-filtered)';
@@ -108,7 +112,7 @@ export function renderConfusionMatrix(container, data, opts = {}) {
     for (const c of cells) {
       const html = () => {
         const v = norm[c.i][c.j];
-        return `<div class="ekc-tt-title">Wahr ${esc(names[c.i])} → Pred ${esc(names[c.j])}</div>${ttRow('Beats', fmt(cm[c.i][c.j]))}${ttRow(`Anteil von ${names[c.i]}`, v == null ? '–' : fmtPct(v, 2), classColor(names[c.i]))}${ttRow(`Anteil an Pred ${names[c.j]}`, colSum[c.j] ? fmtPct(cm[c.i][c.j] / colSum[c.j], 2) : '–', classColor(names[c.j]))}${c.i === c.j ? '' : `<div style="margin-top:4px;color:var(--c-muted)">Fehlklassifikation</div>`}`;
+        return `<div class="ekc-tt-title">${tr('Wahr', 'True')} ${esc(names[c.i])} → ${tr('Pred', 'predicted')} ${esc(names[c.j])}</div>${ttRow('Beats', fmt(cm[c.i][c.j]))}${ttRow(tr(`Anteil von ${names[c.i]}`, `Share of ${names[c.i]}`), v == null ? '–' : fmtPct(v, 2), classColor(names[c.i]))}${ttRow(tr(`Anteil an Pred ${names[c.j]}`, `Share of predicted ${names[c.j]}`), colSum[c.j] ? fmtPct(cm[c.i][c.j] / colSum[c.j], 2) : '–', classColor(names[c.j]))}${c.i === c.j ? '' : `<div style="margin-top:4px;color:var(--c-muted)">${tr('Fehlklassifikation', 'Misclassification')}</div>`}`;
       };
       ls.on(c.g, 'pointerenter', () => highlight(c));
       ls.on(c.g, 'pointermove', (e) => tip.show(html(), e.clientX, e.clientY));

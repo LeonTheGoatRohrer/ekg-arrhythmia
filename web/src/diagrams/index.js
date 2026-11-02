@@ -14,6 +14,7 @@
 
 import mermaid from 'mermaid';
 import { DIAGRAMS, DIAGRAM_IDS } from './definitions.js';
+import { getLang, tr } from '../lib/i18n.js';
 
 export { DIAGRAMS, DIAGRAM_IDS };
 
@@ -37,7 +38,6 @@ const FALLBACK_FONT =
 const STYLE_ID = 'ekg-diagram-styles';
 const MIN_WIDTH = 420; // px, lower bound for SVG width on narrow screens
 const MOBILE_MIN_SCALE = 0.85; // phones: render at >= 85 % of the natural width (labels ~12 px), scroll instead
-const ERROR_TEXT = 'Diagramm konnte nicht dargestellt werden.';
 
 // ---------------------------------------------------------------------------
 // Colour helpers
@@ -96,7 +96,8 @@ function readTheme() {
   }
   // Ignore browser default serif stacks (shell stylesheet not loaded yet).
   if (!font || /^("?times|serif)/i.test(font.trim())) font = FALLBACK_FONT;
-  const signature = JSON.stringify([dark, font, tokens]);
+  // The language is part of the signature so a render never counts as current across a language switch.
+  const signature = JSON.stringify([dark, font, tokens, getLang()]);
   return { dark, tokens, font, signature };
 }
 
@@ -238,7 +239,7 @@ function buildFrame(entry) {
   const loading = document.createElement('div');
   loading.className = 'ekg-diagram__loading';
   loading.setAttribute('role', 'status');
-  loading.textContent = 'Diagramm wird geladen …';
+  loading.textContent = tr('Diagramm wird geladen …', 'Loading diagram …');
   canvas.appendChild(loading);
   figure.appendChild(canvas);
   if (caption) {
@@ -258,16 +259,16 @@ function showError(entry, err) {
   card.setAttribute('role', 'note');
   card.dataset.diagramError = '';
   const strong = document.createElement('strong');
-  strong.textContent = ERROR_TEXT;
+  strong.textContent = tr('Diagramm konnte nicht dargestellt werden.', 'Diagram could not be rendered.');
   card.appendChild(strong);
   const hint = document.createElement('span');
-  hint.textContent = ' Der restliche Inhalt bleibt verfügbar.';
+  hint.textContent = tr(' Der restliche Inhalt bleibt verfügbar.', ' The rest of the content remains available.');
   card.appendChild(hint);
   const message = err && (err.message || err.str || String(err));
   if (message) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
-    summary.textContent = 'Technische Details';
+    summary.textContent = tr('Technische Details', 'Technical details');
     const code = document.createElement('code');
     code.textContent = message.slice(0, 800);
     details.append(summary, code);
@@ -320,7 +321,7 @@ async function renderEntry(entry) {
     const prevHeight = canvas.offsetHeight;
     if (prevHeight) canvas.style.minHeight = `${prevHeight}px`;
     try {
-      if (!entry.source || !String(entry.source).trim()) throw new Error('Leere Diagramm-Quelle.');
+      if (!entry.source || !String(entry.source).trim()) throw new Error(tr('Leere Diagramm-Quelle.', 'Empty diagram source.'));
       configure(theme);
       const text = decorate(entry.source, theme);
       await mermaid.parse(text);
@@ -440,7 +441,7 @@ export async function renderDiagram(container, id, opts = {}) {
   });
   if (!def) {
     entry.dead = true; // nothing to re-render on theme changes
-    showError(entry, new Error(`Unbekanntes Diagramm: "${id}"`));
+    showError(entry, new Error(tr(`Unbekanntes Diagramm: "${id}"`, `Unknown diagram: "${id}"`)));
     return handle(entry, id);
   }
   await renderEntry(entry);
