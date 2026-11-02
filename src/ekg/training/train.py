@@ -149,6 +149,21 @@ def _weighted_loss_sum(logits: torch.Tensor, y: torch.Tensor, weight: torch.Tens
     return float((w * nll).sum().item()), float(w.sum().item())
 
 
+AUG_SCALE = 0.1      # amplitude factor drawn from [1 - s, 1 + s]
+AUG_NOISE = 0.05     # Gaussian noise std (beats are z-normalised)
+AUG_SHIFT = 3        # circular time shift in samples, drawn from [-k, k]
+
+
+def _augment(xb: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
+    """Random amplitude scaling, additive noise and a small time shift per beat (B, L)."""
+    n, length = xb.shape
+    scale = 1.0 + AUG_SCALE * (2.0 * torch.rand(n, 1, generator=gen) - 1.0)
+    noise = AUG_NOISE * torch.randn(n, length, generator=gen)
+    shift = torch.randint(-AUG_SHIFT, AUG_SHIFT + 1, (n, 1), generator=gen)
+    idx = (torch.arange(length).unsqueeze(0) - shift) % length
+    return torch.gather(xb * scale + noise, 1, idx)
+
+
 @torch.no_grad()
 def _evaluate(model: ECGNet1D, ds: BeatTorchDataset, weight: torch.Tensor, device: torch.device,
               batch_size: int) -> tuple[float | None, np.ndarray]:
@@ -186,6 +201,9 @@ def train_cnn(
     weight_decay: float = 0.0,
     model_kwargs: dict[str, Any] | None = None,
     on_epoch: Callable[[dict], None] | None = None,
+    lr_schedule: str | None = None,
+    augment: bool = False,
+    on_epoch_model: Callable[[int, ECGNet1D], None] | None = None,
 ) -> tuple[ECGNet1D, list[dict]]:
     """Train an :class:`ECGNet1D` with Adam and class-weighted cross-entropy.
 
@@ -213,6 +231,13 @@ def train_cnn(
         ``in_len`` and ``n_rr`` are derived from the data / ``CLASSES`` unless given).
     on_epoch:
         Optional callback receiving each history entry (e.g. for logging).
+    lr_schedule:
+        ``None`` (constant ``lr``) or ``"cosine"`` (cosine annealing to 0 over ``epochs``).
+    augment:
+        Augment training beats each batch (amplitude scaling, noise, time shift; see
+        :func:`_augment`), drawn from a separate generator seeded with ``seed + 1``.
+    on_epoch_model:
+        Optional callback ``(epoch, model)`` after each epoch, e.g. to evaluate snapshots.
 
     Returns
     -------
@@ -228,6 +253,8 @@ def train_cnn(
         raise ValueError("batch_size must be >= 1")
     if patience is not None and patience < 1:
         raise ValueError("patience must be >= 1 or None")
+    if lr_schedule not in (None, "cosine"):
+        raise ValueError(f"unknown lr_schedule {lr_schedule!r}, expected None or 'cosine'")
 
     set_determinism(seed)
     dev = torch.device(device)
@@ -247,11 +274,14 @@ def train_cnn(
     weight = class_weights(train.labels, n_classes).to(dev)
     criterion = nn.CrossEntropyLoss(weight=weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+                 if lr_schedule == "cosine" else None)
 
     train_ds = BeatTorchDataset(train)
     val_ds = BeatTorchDataset(val) if has_val else None
     val_true = np.asarray(val.labels, dtype=np.int64) if has_val else None
     gen = torch.Generator().manual_seed(int(seed))
+    aug_gen = torch.Generator().manual_seed(int(seed) + 1)
     n = len(train_ds)
 
     history: list[dict] = []
@@ -265,7 +295,10 @@ def train_cnn(
         loss_sum, w_sum = 0.0, 0.0
         for start in range(0, n, batch_size):
             idx = perm[start:start + batch_size]
-            xb = train_ds.beats[idx].to(dev)
+            xb = train_ds.beats[idx]
+            if augment:
+                xb = _augment(xb, aug_gen)
+            xb = xb.to(dev)
             rb = train_ds.rr[idx].to(dev)
             yb = train_ds.labels[idx].to(dev)
             optimizer.zero_grad(set_to_none=True)
@@ -309,6 +342,10 @@ def train_cnn(
         history.append(entry)
         if on_epoch is not None:
             on_epoch(dict(entry))
+        if on_epoch_model is not None:
+            on_epoch_model(epoch, model)
+        if scheduler is not None:
+            scheduler.step()
         if stop:
             break
 

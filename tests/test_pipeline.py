@@ -345,3 +345,18 @@ def test_beat_cache_invalidated_by_preprocessing_code_change(tmp_path, monkeypat
     bs2, hit = pipeline.load_or_build_beats("100", SAMPLE, cache)
     assert not hit
     np.testing.assert_array_equal(bs.beats, bs2.beats)
+
+
+def test_cv_without_validation_reports_epoch_snapshots(tmp_path):
+    names = ["901", "902", "903", "904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, names)
+    rep = pipeline.run_cv(data, tmp_path / "cv", cache_dir=tmp_path / "beats", k=2, seeds=[0, 1], epochs=2,
+                          patience=None, n_val=0, max_class_share=None, ds1=names, eval_epochs=[1, 2, 7],
+                          tag="fixed")
+    assert (tmp_path / "cv" / "cv_base_fixed.json").exists()
+    assert all(f["val"] == [] for r in rep["runs"] for f in r["folds"])
+    assert set(rep["by_epoch"]) == {"1", "2"}
+    # the snapshot after the last epoch is the final model
+    for r in rep["runs"]:
+        assert r["by_epoch"]["2"]["macro_f1_nsvf"] == r["summary"]["macro_f1_nsvf"]

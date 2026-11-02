@@ -911,13 +911,17 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
            features: str = "base", k: int = 5, seeds: Sequence[int] = (0, 1, 2), epochs: int = 20,
            patience: int | None = 5, lr: float = 1e-3, batch_size: int = 256, n_val: int = 3,
            max_class_share: float | None = 0.4, use_reference_peaks: bool = True,
-           ds1: Sequence[str] = DS1) -> dict:
+           ds1: Sequence[str] = DS1, lr_schedule: str | None = None, augment: bool = False,
+           eval_epochs: Sequence[int] = (), tag: str = "") -> dict:
     """Record-grouped k-fold CV of the CNN on DS1 only (DS2 is never loaded).
 
     Per seed, the out-of-fold predictions of all folds are pooled into one summary;
     the report gives mean and standard deviation of these summaries over the seeds.
     Early stopping inside a fold uses ``n_val`` training records (``max_class_share``
-    keeps records that dominate a class in training).
+    keeps records that dominate a class in training). ``n_val=0`` trains on all
+    remaining records for exactly ``epochs`` epochs (no validation, no early stopping).
+    ``eval_epochs`` additionally pools the out-of-fold predictions after each listed
+    epoch (``by_epoch`` in the report), to pick a fixed epoch count from one run.
     """
     from ekg.evaluation.metrics import summary
     from ekg.training.train import predict, train_cnn
@@ -926,18 +930,26 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
     sets = prepare_splits(data_dir, cache_dir, use_reference_peaks=use_reference_peaks, ds1=ds1, ds2=())["DS1"]
     labels = {r: bs.labels for r, bs in sets.items()}
     folds = cv_folds(labels, k)
+    eval_epochs = sorted({int(e) for e in eval_epochs if 1 <= int(e) <= epochs})
     runs = []
     for seed in seeds:
         y_true, y_pred, fold_info = [], [], []
+        snap_pred: dict[int, list[np.ndarray]] = {e: [] for e in eval_epochs}
         for i, test_names in enumerate(folds):
             rest = {r: labels[r] for r in sorted(sets) if r not in test_names}
-            val_names = select_validation_records(rest, n_val, seed, max_class_share=max_class_share)
+            val_names = select_validation_records(rest, n_val, seed, max_class_share=max_class_share) if n_val else []
             train = BeatSet.concat([sets[r] for r in rest if r not in val_names])
-            val = BeatSet.concat([sets[r] for r in val_names])
-            test = BeatSet.concat([sets[r] for r in test_names])
-            model, history = train_cnn(with_features(train, features), with_features(val, features), epochs=epochs,
-                                       lr=lr, batch_size=batch_size, seed=seed, patience=patience)
-            pred = predict(model, with_features(test, features))
+            val = with_features(BeatSet.concat([sets[r] for r in val_names]), features) if val_names else None
+            test = with_features(BeatSet.concat([sets[r] for r in test_names]), features)
+
+            def snapshot(epoch: int, model) -> None:
+                if epoch in snap_pred:
+                    snap_pred[epoch].append(predict(model, test))
+
+            model, history = train_cnn(with_features(train, features), val, epochs=epochs,
+                                       lr=lr, batch_size=batch_size, seed=seed, patience=patience,
+                                       lr_schedule=lr_schedule, augment=augment, on_epoch_model=snapshot)
+            pred = predict(model, test)
             y_true.append(test.labels)
             y_pred.append(pred)
             best = [h["epoch"] for h in history if h.get("best")]
@@ -947,7 +959,9 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
             _log(f"CV {features} seed={seed} fold={i}: test={','.join(test_names)} val={','.join(val_names)} "
                  f"macro_f1_nsvf={fold_s['macro_f1_nsvf']:.4f}")
         s = summary(np.concatenate(y_true), np.concatenate(y_pred), CLASSES)
-        runs.append({"seed": int(seed), "summary": s, "folds": fold_info})
+        by_epoch = {str(e): summary(np.concatenate(y_true), np.concatenate(p), CLASSES)
+                    for e, p in snap_pred.items() if len(p) == len(folds)}
+        runs.append({"seed": int(seed), "summary": s, "folds": fold_info, "by_epoch": by_epoch})
         _log(f"CV {features} seed={seed}: gepoolt macro_f1_nsvf={s['macro_f1_nsvf']:.4f} macro_f1={s['macro_f1']:.4f}")
 
     def stat(values: list[float]) -> dict:
@@ -958,6 +972,9 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
                  "macro_f1_nsvf": stat([r["summary"]["macro_f1_nsvf"] for r in runs]),
                  "per_class": {c: {m: stat([r["summary"]["per_class"][c][m] for r in runs])
                                    for m in ("sensitivity", "ppv", "f1")} for c in CLASSES}}
+    by_epoch = {e: {"macro_f1_nsvf": stat([r["by_epoch"][e]["macro_f1_nsvf"] for r in runs]),
+                    "n_sensitivity": stat([r["by_epoch"][e]["per_class"]["N"]["sensitivity"] for r in runs])}
+                for e in runs[0]["by_epoch"]} if runs else {}
     report = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": _now(),
@@ -966,15 +983,21 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
         "folds": folds,
         "config": {"k": k, "seeds": [int(s) for s in seeds], "epochs": epochs, "patience": patience, "lr": lr,
                    "batch_size": batch_size, "n_val": n_val, "max_class_share": max_class_share,
-                   "use_reference_peaks": use_reference_peaks,
+                   "use_reference_peaks": use_reference_peaks, "lr_schedule": lr_schedule, "augment": augment,
+                   "eval_epochs": eval_epochs,
                    "preprocessing_fingerprint": preprocessing_fingerprint(),
                    "library_versions": library_versions()},
         "aggregate": aggregate,
+        "by_epoch": by_epoch,
         "runs": runs,
     }
-    _write_json(Path(out_dir) / f"cv_{features}.json", report)
+    name = f"cv_{features}_{tag}" if tag else f"cv_{features}"
+    _write_json(Path(out_dir) / f"{name}.json", report)
     m = aggregate["macro_f1_nsvf"]
-    _log(f"CV {features} fertig: macro_f1_nsvf = {m['mean']:.4f} ± {m['std']:.4f} über {len(runs)} Seeds")
+    _log(f"CV {name} fertig: macro_f1_nsvf = {m['mean']:.4f} ± {m['std']:.4f} über {len(runs)} Seeds")
+    for e, v in by_epoch.items():
+        _log(f"  Epoche {e}: macro_f1_nsvf = {v['macro_f1_nsvf']['mean']:.4f} ± {v['macro_f1_nsvf']['std']:.4f}, "
+             f"N-Se = {v['n_sensitivity']['mean']:.4f}")
     return report
 
 
@@ -1090,9 +1113,14 @@ def _build_parser() -> argparse.ArgumentParser:
     c.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     c.add_argument("--epochs", type=int, default=20)
     c.add_argument("--patience", type=int, default=5, help="Early Stopping (0 = aus)")
-    c.add_argument("--n-val", type=int, default=3)
+    c.add_argument("--n-val", type=int, default=3, help="0 = keine Validierung, feste Epochenzahl")
     c.add_argument("--max-class-share", type=float, default=0.4)
     c.add_argument("--detected-peaks", action="store_true")
+    c.add_argument("--lr-schedule", choices=["cosine"], default=None)
+    c.add_argument("--augment", action="store_true", help="Amplitude, Rauschen, Zeitverschiebung")
+    c.add_argument("--eval-epochs", type=int, nargs="*", default=[],
+                   help="Out-of-fold-Auswertung zusätzlich nach diesen Epochen")
+    c.add_argument("--tag", default="", help="Namenszusatz der Ausgabedatei")
 
     s = sub.add_parser("smoke", help="Mechanik-Test auf Record 100, 1 Epoche, nur artifacts/smoke/")
     s.add_argument("--record", default="data/sample/100")
@@ -1121,7 +1149,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.cmd == "cv":
             run_cv(args.data_dir, args.out, cache_dir=args.cache, features=args.features, k=args.folds,
                    seeds=args.seeds, epochs=args.epochs, patience=args.patience or None, n_val=args.n_val,
-                   max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks)
+                   max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks,
+                   lr_schedule=args.lr_schedule, augment=args.augment, eval_epochs=args.eval_epochs, tag=args.tag)
         elif args.cmd == "smoke":
             rep = run_smoke(args.record, args.out, epochs=args.epochs)
             return 0 if rep["ok"] else 1

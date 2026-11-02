@@ -203,3 +203,26 @@ def test_load_model_rejects_foreign_file(tmp_path):
     torch.save({"foo": 1}, p)
     with pytest.raises(ValueError):
         load_model(p)
+
+
+def test_augment_keeps_shape_and_is_seeded():
+    from ekg.training.train import _augment
+    x = torch.from_numpy(_synthetic((5, 5, 5)).beats)
+    a = _augment(x, torch.Generator().manual_seed(3))
+    b = _augment(x, torch.Generator().manual_seed(3))
+    assert a.shape == x.shape
+    assert torch.equal(a, b)
+    assert not torch.equal(a, x)
+
+
+def test_cosine_schedule_and_epoch_model_callback():
+    data = _synthetic((40, 20, 20))
+    seen = []
+    _, hist = train_cnn(data, None, epochs=4, seed=0, lr_schedule="cosine", augment=True,
+                        on_epoch_model=lambda e, m: seen.append((e, m.training)))
+    lrs = [h["lr"] for h in hist]
+    assert lrs[0] == pytest.approx(1e-3)
+    assert all(a > b for a, b in zip(lrs, lrs[1:]))
+    assert [e for e, _ in seen] == [1, 2, 3, 4]
+    with pytest.raises(ValueError):
+        train_cnn(data, None, epochs=1, lr_schedule="step")
