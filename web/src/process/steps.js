@@ -267,7 +267,7 @@ export const STEPS = [
 <p><strong>Optimierung:</strong> Der <strong>Adam</strong>-Optimierer passt die Lernrate je Parameter adaptiv an; trainiert wird in Mini-Batches über mehrere Epochen mit festem Zufalls-Seed für Reproduzierbarkeit.</p>
 <p><strong>Validierung nur auf DS1:</strong> Für Modellauswahl und Early Stopping wird ein Hold-out-Teil <em>aus DS1</em> verwendet. DS2 wird weder für die Wahl von Hyperparametern noch für den Stopp-Zeitpunkt herangezogen – sonst würde Testinformation ins Modell „durchsickern“ und das Ergebnis geschönt.</p>
 <p><strong>Early Stopping:</strong> Nach jeder Epoche werden Validierungs-Loss und Macro-F1 protokolliert. Verbessert sich die Validierung nicht mehr, wird das Training beendet und der beste Zustand behalten – das begrenzt Überanpassung an die Trainingspatienten.</p>
-<p><strong>Aktueller Stand:</strong> Das Training auf dem vollständigen DS1 wurde lokal ausgeführt; die Kurve zeigt den echten Verlauf aus <code>metrics.json</code>. Achtung: Der zufällig gezogene Validierungs-Record 208 enthält rund 90&nbsp;% aller F-Schläge von DS1 – dem CNN blieben dadurch kaum F-Beispiele zum Lernen.</p>`,
+<p><strong>Aktueller Stand:</strong> Das Training auf dem vollständigen DS1 wurde lokal ausgeführt; die Kurve zeigt den echten Verlauf aus <code>metrics.json</code>. Validiert wird auf den DS1-Records 114, 119, 122 und 201: Record 208 enthält rund 90&nbsp;% aller F-Schläge von DS1 und bleibt deshalb im Training. Trotzdem lernt das CNN F kaum übertragbar – fast alle F-Beispiele stammen von diesem einen Patienten.</p>`,
     bullets: [
       'Klassengewichte invers zur Häufigkeit',
       'Adam-Optimierer, Mini-Batches, fester Seed',
