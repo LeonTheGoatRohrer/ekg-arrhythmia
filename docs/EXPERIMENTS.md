@@ -41,3 +41,32 @@ N-Sensitivität stetig (0,88 → 0,79): Das Netz lernt die Trainingspatienten au
 (+0,01), bleibt aber innerhalb einer Std. Cosine-Lernrate wurde nicht mehr gerechnet, weil das
 Optimum schon nach 3–5 Epochen liegt. **Entscheidung:** Early Stopping bleibt; Augmentierung wird
 mit Early Stopping noch einmal geprüft (`es_aug`).
+
+## Runde 2 (vorab festgelegt, 2026-11-03, vor Sicht der Ergebnisse)
+
+Läufe, alle mit Early Stopping wie die Basis (3 Validierungs-Records je Fold,
+`max_class_share` 0,4, Patience 5, max. 20 Epochen), 5 Folds × Seeds 0/1/2, Out-of-fold-Logits
+gespeichert:
+
+| ID | Änderung gegenüber Basis |
+|---|---|
+| `es` | keine (Basis neu, damit Out-of-fold-Logits vorliegen; muss 0,459 reproduzieren) |
+| `wp05` | A2: Klassengewichte mit Exponent 0,5 (Wurzel) statt 1 |
+| `es_aug` | A1b: Augmentierung (Amplitude ±10 %, Rauschen σ 0,05, Verschiebung ±3 Samples) |
+| `l2` | A3: zweite Ableitung (meist V1) als zweiter CNN-Kanal |
+
+**Regeln für die Auswahl:**
+1. Eine Komponente gilt als „angenommen“, wenn ihr Lauf das Kriterium oben erfüllt
+   (Mittelwert ≥ Basis + 1 Std der Basis, N-Sensitivität nicht niedriger).
+2. Angenommene Komponenten werden in einem Kombinationslauf zusammen geprüft (A4: dabei auch
+   mit `--features patient`, weil dessen früherer Lauf 0,481 ± 0,024 knapp an der damals
+   festgelegten Schwelle scheiterte, unter der heutigen Regel aber knapp darüber läge).
+   Die Kombination ersetzt die beste Einzelkomponente nur, wenn sie wieder das Kriterium
+   gegenüber dieser erfüllt.
+3. A5/A6 werden auf den Out-of-fold-Logits der gewählten Konfiguration entschieden: Das
+   Seed-Ensemble wird übernommen, wenn es ≥ dem Mittel der Einzelmodelle ist (es kostet nur
+   Rechenzeit). Klassen-Offsets werden nur übernommen, wenn die verschachtelte Schätzung (Offsets
+   auf 4 Folds gelernt, auf dem 5. angewendet) `macro_f1_nsvf` um mindestens 0,01 über das
+   Ensemble ohne Offsets hebt.
+4. Danach wird die Konfiguration eingefroren (Commit) und DS2 genau einmal ausgewertet (A7),
+   mit Experten-R-Zacken und zusätzlich mit Pan-Tompkins-R-Zacken.
