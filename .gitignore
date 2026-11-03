@@ -4,6 +4,7 @@ __pycache__/
 web/node_modules/
 web/dist/
 data/mitdb/
+data/svdb/
 artifacts/
 .project_state.lock
 .state-*.json
