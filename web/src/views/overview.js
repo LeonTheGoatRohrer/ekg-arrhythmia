@@ -108,6 +108,8 @@ function buildTiles({ signal, arch, stats, metrics }) {
     if (cnn?.per_class?.V?.sensitivity != null) tiles.push({ label: tr('Sensitivität V · CNN', 'Sensitivity V · CNN'), value: pct(cnn.per_class.V.sensitivity), unit: '', hint: `PPV ${pct(cnn.per_class.V.ppv)}`, src: 'metrics.json' });
     if (cnn?.per_class?.S?.sensitivity != null) tiles.push({ label: tr('Sensitivität S · CNN', 'Sensitivity S · CNN'), value: pct(cnn.per_class.S.sensitivity), unit: '', hint: `PPV ${pct(cnn.per_class.S.ppv)}`, src: 'metrics.json' });
     if (tree?.macro_f1 != null) tiles.push({ label: tr('Macro-F1 · Entscheidungsbaum', 'Macro F1 · decision tree'), value: fmt(tree.macro_f1, 3), unit: '', hint: tr('interpretierbare Baseline', 'interpretable baseline'), src: 'metrics.json' });
+    const e2e = metrics.detected_peaks?.cnn?.summary;
+    if (e2e?.macro_f1 != null) tiles.push({ label: tr('End-to-End (Pan-Tompkins)', 'End to end (Pan-Tompkins)'), value: fmt(e2e.macro_f1, 3), unit: '', hint: tr('Macro-F1 des CNN auf selbst detektierten Schlägen', 'CNN macro F1 on self-detected beats'), src: 'metrics.json' });
   }
   return tiles;
 }
