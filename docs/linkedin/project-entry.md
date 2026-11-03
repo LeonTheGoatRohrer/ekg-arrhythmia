@@ -14,9 +14,10 @@ ECG Arrhythmia Detection on MIT-BIH: Inter-Patient 1D-CNN, Built with Orchestrat
 
 ## Description
 
-Limit: 2,000 characters. This text: **1,686 characters** (incl. paragraph breaks).
+Limit: 2,000 characters. This text: **1,905 characters** (incl. 12 line breaks; even if each
+break counts as two characters, it stays below 2,000).
 
-<!-- METRICS: all model numbers of this entry are in the paragraph between METRICS:START and METRICS:END (preliminary, from web/public/data/metrics.json, 2026-11-02). Replace it after the final DS2 evaluation and re-count the characters. -->
+<!-- METRICS: all model numbers of this entry are in the paragraph between METRICS:START and METRICS:END (final, from web/public/data/metrics.json, generated_at 2026-11-03T12:05:00+00:00: cnn.summary and external.cnn.summary). Re-count the characters after any change. -->
 
 ---
 
@@ -27,10 +28,10 @@ The key decision was a strict inter-patient evaluation (de Chazal et al., 2004):
 Pipeline: baseline and band-pass filtering, Pan-Tompkins R-peak detection, beat segmentation, a compact PyTorch 1D-CNN with RR-interval features, and an interpretable decision tree for comparison. I report sensitivity and PPV per class and macro-F1, not accuracy.
 
 <!-- METRICS:START -->
-Preliminary result on unseen patients: macro-F1 0.58 over N/S/V/F. Ventricular beats: sensitivity 79 %, PPV 94 %. Supraventricular beats: sensitivity 69 %, PPV 40 %. Fusion beats are practically not detected.
+Final result on unseen patients: macro-F1 0.59 over N/S/V/F. Ventricular beats: sensitivity 97 %, PPV 81 %. Supraventricular beats: sensitivity 66 %, PPV 43 %. Fusion beats are practically not detected. On a second ECG database, applied without any retraining, ventricular sensitivity stays at 90 %, while supraventricular sensitivity drops to 46 %.
 <!-- METRICS:END -->
 
-I also document what went wrong: the test set was evaluated twice so far. From now on every decision goes through cross-validation on the training patients only, and the test set is evaluated exactly once at the end.
+I also document what went wrong: the test set was evaluated three times in total. After the first two looks, every model decision went through cross-validation on the training patients only, including the ideas I rejected. The final configuration was committed before the single final test run.
 
 I built the project with orchestrated AI coding agents: an orchestrator split the work into modules, up to 16 sub-agents worked in parallel on separate files, coordinated by written interface contracts, a lock-protected shared state file and dependency-based waves, followed by an independent review wave. I set the goals and guardrails, made the methodology decisions and checked the results.
 
@@ -57,4 +58,4 @@ JavaScript, GitHub Actions.
 - **Code:** https://github.com/LeonTheGoatRohrer/ekg-arrhythmia (add only once the repo is public)
 - **Media:** screenshot `docs/screenshots/process-light-desktop.png` or a short screen recording
   of the rhythm player and the Process view.
-- **Dates:** started November 2026; keep it marked as ongoing until the final evaluation is done.
+- **Dates:** November 2026 (final evaluation on 3 November 2026).

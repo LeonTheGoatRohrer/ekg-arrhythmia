@@ -10,7 +10,7 @@ der MIT-BIH Arrhythmia Database den fünf AAMI-EC57-Klassen **N, S, V, F, Q** zu
 **Live-Demo:** <https://leonrohrer.at/ekg-arrhythmia/> – zeigt jeden Schritt vom Rohsignal bis
 zur Klasse, mit Diagrammen und echten Daten.
 
-![Process-Ansicht der Web-Oberfläche: Pipeline vom MIT-BIH-Record bis zur AAMI-Klasse](docs/screenshots/process-light-desktop.png)
+![Startseite der Web-Oberfläche: Signal von Record 100, Rhythmus-Player, Kennzahlen und Pipeline](docs/screenshots/overview-light.png)
 
 > Lern- und Portfolio-Projekt. **Kein Medizinprodukt**, nicht für Diagnosen geeignet.
 
@@ -21,74 +21,96 @@ zur Klasse, mit Diagrammen und echten Daten.
 | **Daten** | MIT-BIH Arrhythmia Database (PhysioNet), Ableitung MLII, 360 Hz. 44 von 48 Records; die 4 Schrittmacher-Records (102, 104, 107, 217) sind nach AAMI-Empfehlung ausgeschlossen. |
 | **Split** | de Chazal et al. (2004): DS1 (22 Records) nur Training, DS2 (22 Records) nur Test. Kein Record liegt in beiden Mengen; nur 201 (DS1) und 202 (DS2) stammen von derselben Person, eine bekannte Eigenheit dieses Splits. |
 | **Klassen** | N (normal, Schenkelblock, Ersatzschläge), S (supraventrikulär ektop), V (ventrikulär ektop), F (Fusion), Q (unklassifizierbar). |
-| **Modelle** | `ECGNet1D` (3 Faltungsblöcke + RR-Zweig, 14 749 Parameter) und ein Entscheidungsbaum (Tiefe 4, 11 lesbare Merkmale). |
+| **Modelle** | `ECGNet1D`: 3 Faltungsblöcke für die Schlagform plus ein Zweig für 10 Zusatzmerkmale (RR-Intervalle und patientenrelative Merkmale), 14 857 Parameter; das finale Modell mittelt 5 solcher Netze (Seed-Ensemble). Dazu ein Entscheidungsbaum (Tiefe 4, 11 lesbare Merkmale). |
 | **Hauptmetriken** | Sensitivität und PPV je Klasse, Macro-F1 über N/S/V/F. Accuracy ist keine Hauptzahl: Rund 89 % der Testschläge sind normal, ein Modell, das immer „N“ sagt, wirkt damit schon gut. |
 | **Oberfläche** | Vite, Tailwind CSS v4, Mermaid; Deutsch/Englisch, hell/dunkel; statisch auf GitHub Pages. |
 
 ## Ergebnisse
 
-Ausgewertet wird auf DS2 mit den R-Zacken-Positionen der Experten-Annotationen (wie bei
-de Chazal). Die Tabellen zeigen die EC57-„Gross“-Statistik, also über alle Test-Records gepoolt,
-mit der VEB-Regel der Norm: Echte Fusionsschläge, die als V erkannt werden, zählen für V nicht
-als Fehlalarm.
+Hauptergebnis ist die einmalige Auswertung auf DS2 mit den R-Zacken-Positionen der
+Experten-Annotationen (wie bei de Chazal). Die Konfiguration wurde vorher allein per
+Kreuzvalidierung auf DS1 gewählt und eingefroren. Die Tabellen zeigen Werte aus der über alle
+Test-Records gepoolten Konfusionsmatrix (EC57 „gross“) **ohne** Sonderregel. Die EC57-VEB-Regel
+(echte Fusionsschläge, die als V erkannt werden, zählen für V nicht als Fehlalarm) ändert nur die
+V-PPV; dieser Wert steht jeweils als Fußnote dabei.
 
 <!-- METRICS:START -->
-<!-- vorläufig: Werte aus web/public/data/metrics.json (generated_at 2026-11-02T11:06:14+00:00, zweite DS2-Auswertung, siehe Methodik-Transparenz). Die Haupt-Session ersetzt diesen Block nach der finalen DS2-Auswertung (Plan A7). Die de-Chazal-Spalte (Literaturwerte, Quelle siehe unten) beim Ersetzen beibehalten. -->
+<!-- final: Werte aus web/public/data/metrics.json (generated_at 2026-11-03T12:05:00+00:00): cnn.summary, cnn.gross_statistics, cnn.per_seed_aggregate, cnn.ensemble, detected_peaks, tree, cv, external. Einmalige DS2-Auswertung mit der in Commit 72b1cab eingefrorenen Konfiguration (Plan A7), externer Test A8. -->
 
-> **Vorläufig.** Diese Werte stammen aus der zweiten Auswertung von DS2 und werden nach der
-> einmaligen finalen Auswertung ersetzt (siehe [Methodik-Transparenz](#methodik-transparenz)).
-
-**1D-CNN** (Validierung auf den DS1-Records 114, 119, 122, 201; bestes Modell nach Epoche 2 von 7):
+**Finales Modell: CNN-Ensemble** (5 Seeds, patientenrelative Merkmale, Experten-R-Zacken, DS2):
 
 | Klasse | Sensitivität | PPV | F1 | Schläge in DS2 |
 |---|---:|---:|---:|---:|
-| N | 92,0 % | 97,5 % | 94,7 % | 44 240 |
-| S | 69,0 % | 40,2 % | 50,8 % | 1 837 |
-| V | 79,2 % | 93,6 % | 85,8 % | 3 220 |
-| F | 1,0 % | 0,2 % | 0,3 % | 388 |
+| N | 93,7 % | 98,0 % | 95,8 % | 44 240 |
+| S | 66,1 % | 43,0 % | 52,1 % | 1 837 |
+| V | 97,2 % | 81,3 %² | 88,5 % | 3 220 |
+| F | 0,8 % | 0,4 % | 0,5 % | 388 |
 | Q | 0,0 % | 0,0 % | 0,0 % | 7 |
 
-- **Macro-F1 (N/S/V/F): 0,579** · Macro-F1 über alle 5 Klassen: 0,463
-- Accuracy 89,6 % – zum Vergleich: „immer N“ erreicht 89,0 %.
-- Größte Fehlerquelle: 2 018 normale Schläge werden als F erkannt, F selbst wird praktisch nie
-  getroffen.
+² Mit der EC57-VEB-Regel: V-PPV 83,4 % (F1 89,8 %).
 
-Konfusionsmatrix des CNN (Zeilen = wahre Klasse, Spalten = Vorhersage):
+- **Macro-F1 (N/S/V/F): 0,592** · Macro-F1 über alle 5 Klassen: 0,474
+- Die 5 Einzelmodelle erreichen 0,564 ± 0,048 (Mittelwert ± Standardabweichung); das Ensemble
+  glättet diese Streuung.
+- Accuracy 92,1 % – zum Vergleich: „immer N“ erreicht 89,0 %.
+- Größte Fehlerquelle ist S ↔ N: 1 545 normale Schläge werden als S erkannt, 523 S-Schläge als
+  N. F wird praktisch nicht erkannt (3 von 388).
+- Validierung je Seed auf 4 DS1-Records, beste Epochen 2, 2, 5, 1 und 4.
+
+Konfusionsmatrix des CNN-Ensembles (Zeilen = wahre Klasse, Spalten = Vorhersage):
 
 | | N | S | V | F | Q |
 |---|---:|---:|---:|---:|---:|
-| **N** | 40 691 | 1 496 | 35 | 2 018 | 0 |
-| **S** | 391 | 1 268 | 139 | 39 | 0 |
-| **V** | 252 | 387 | 2 550 | 31 | 0 |
-| **F** | 380 | 2 | 2 | 4 | 0 |
-| **Q** | 6 | 1 | 0 | 0 | 0 |
+| **N** | 41 440 | 1 545 | 551 | 704 | 0 |
+| **S** | 523 | 1 215 | 69 | 30 | 0 |
+| **V** | 17 | 66 | 3 129 | 8 | 0 |
+| **F** | 288 | 1 | 96 | 3 | 0 |
+| **Q** | 3 | 1 | 3 | 0 | 0 |
+
+**Ende-zu-Ende mit Pan-Tompkins** statt Experten-R-Zacken: Der Detektor findet auf allen 22
+DS2-Records 99,39 % der Schläge bei einer PPV von 99,79 % (TP 49 411, FP 106, FN 301, Toleranz
+±150 ms). Auf den gefundenen Schlägen erreicht das CNN-Ensemble Macro-F1 (N/S/V/F) 0,585;
+S 64,8 % / 41,3 %, V 95,5 % / 80,5 % (Sensitivität / PPV). Die 301 nicht gefundenen Schläge
+fehlen in dieser Auswertung.
 
 **Entscheidungsbaum** (Tiefe 4, auf ganz DS1 trainiert): Macro-F1 (N/S/V/F) 0,356.
-Sensitivität / PPV: N 60,0 % / 95,0 % · S 7,1 % / 1,9 % · V 82,4 % / 54,9 % · F 1,8 % / 0,1 %.
+Sensitivität / PPV: N 60,0 % / 95,0 % · S 7,1 % / 1,9 % · V 82,4 % / 54,6 % · F 1,8 % / 0,1 %.
 Der Baum ist bewusst klein und lesbar; er zeigt, wie weit einfache Merkmale tragen, vor allem
 bei V.
 
-**Kreuzvalidierung nur auf DS1** (5 record-gruppierte Folds × 3 Seeds, Macro-F1 N/S/V/F,
-Mittelwert ± Standardabweichung): `base` 0,459 ± 0,020 · `rr` 0,463 ± 0,023 ·
-`patient` 0,481 ± 0,024. Das ist die Ausgangslage für alle weiteren Modellentscheidungen.
+**Kreuzvalidierung nur auf DS1** (Grundlage aller Entscheidungen; 5 record-gruppierte Folds × 3
+Seeds, Macro-F1 N/S/V/F): finale Konfiguration 0,481 ± 0,024, als 3-Seed-Ensemble 0,483. Die
+DS2-Werte liegen darüber; die CV-Zahl ist die vorsichtigere Schätzung. Alle Varianten stehen in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
-**R-Zacken-Detektion** (Pan-Tompkins, nur Record 100, Toleranz ±150 ms): 2 273 von 2 273
-Schlägen gefunden, 0 Fehldetektionen. Ein einzelner Record ist kein Benchmark.
+**Externer Test: MIT-BIH Supraventricular Arrhythmia Database** (78 Records, 184 515 Schläge,
+128 Hz auf 360 Hz hochgerechnet, Kanal ECG1). Das finale Ensemble wurde unverändert angewendet,
+ohne Nachtraining und ohne Anpassung:
+
+| Klasse | Sensitivität | PPV | F1 | Schläge |
+|---|---:|---:|---:|---:|
+| N | 95,4 % | 97,3 % | 96,3 % | 162 276 |
+| S | 46,0 % | 60,5 % | 52,2 % | 12 196 |
+| V | 90,3 % | 67,0 % | 77,0 % | 9 941 |
+| F | 0,0 % | 0,0 % | 0,0 % | 23 |
+
+Macro-F1 (N/S/V/F) 0,564, stark gedrückt durch F mit nur 23 Schlägen. S wird hier seltener
+gefunden als auf DS2, die S-Alarme sind dafür häufiger richtig.
 
 ### Vergleich mit de Chazal et al. (2004)
 
-| Kennzahl | dieses Projekt (CNN, vorläufig) | de Chazal et al. 2004 |
+| Kennzahl | dieses Projekt (CNN-Ensemble, DS2) | de Chazal et al. 2004 |
 |---|---:|---:|
-| N Sensitivität | 92,0 % | 86,9 %¹ |
-| N PPV | 97,5 % | 99,2 %¹ |
-| S Sensitivität | 69,0 % | 75,9 % |
-| S PPV | 40,2 % | 38,5 % |
-| V Sensitivität | 79,2 % | 77,7 % |
-| V PPV | 93,6 % | 81,9 % |
+| N Sensitivität | 93,7 % | 86,9 %¹ |
+| N PPV | 98,0 % | 99,2 %¹ |
+| S Sensitivität | 66,1 % | 75,9 % |
+| S PPV | 43,0 % | 38,5 % |
+| V Sensitivität | 97,2 % | 77,7 % |
+| V PPV | 81,3 % (83,4 % mit VEB-Regel) | 81,9 % |
 
-Im vorläufigen Lauf liegt das CNN bei V und bei der S-PPV auf ähnlichem oder höherem Niveau,
-bei der S-Sensitivität darunter. Die Zahlen sind nur eingeschränkt vergleichbar (Bedingungen
-siehe unten).
+Das CNN-Ensemble liegt bei N-Sensitivität, S-PPV und V-Sensitivität über de Chazal, bei
+S-Sensitivität und N-PPV darunter; die V-PPV ist ähnlich. Die Zahlen sind nur eingeschränkt
+vergleichbar (Bedingungen siehe unten).
 
 ¹ N-Werte aus einer Sekundärquelle, siehe unten.
 <!-- METRICS:END -->
@@ -99,59 +121,67 @@ Transactions on Biomedical Engineering 51(7), 1196–1206, 2004.
 [doi:10.1109/TBME.2004.827359](https://doi.org/10.1109/TBME.2004.827359). Die Werte für S und V
 stehen im Abstract der Arbeit. Die N-Werte stammen aus der Vergleichstabelle von Tan et al. 2019
 ([arXiv:1906.07361](https://arxiv.org/abs/1906.07361), Tabelle VI); die Originaltabelle habe ich
-nicht eingesehen. Gleich sind Split (DS1 → DS2), Klassen, EC57-Konventionen und die Verwendung
-der Experten-R-Zacken. Anders: de Chazal nutzt **zwei** Ableitungen und lineare Diskriminanten auf
-handgebauten Merkmalen, dieses Projekt nur MLII und ein CNN. Außerdem wurde DS2 hier vor dem
-finalen Lauf bereits mehrfach ausgewertet.
+nicht eingesehen. Gleich sind Split (DS1 → DS2), Klassen und die Verwendung der
+Experten-R-Zacken. Anders: de Chazal nutzt **zwei** Ableitungen und lineare Diskriminanten auf
+handgebauten Merkmalen, dieses Projekt nur MLII, ein CNN-Ensemble und Merkmale relativ zum
+eigenen Record. Außerdem wurde DS2 hier vor der finalen Auswertung bereits zweimal ausgewertet
+(siehe [Methodik-Transparenz](#methodik-transparenz)).
 
 ## Grenzen
 
 - **Kleine Datenbasis.** Die MIT-BIH-Datenbank umfasst 48 Records von 47 Personen, aufgenommen
-  1975–1979; genutzt werden 44, getestet wird auf 22. Das Ergebnis sagt wenig darüber, wie das
-  Modell auf anderen Geräten, Ableitungen oder Patientengruppen arbeitet. Ein externer Test
-  (z. B. MIT-BIH Supraventricular Arrhythmia Database) ist angedacht, aber noch nicht gemacht.
+  1975–1979; genutzt werden 44, getestet wird auf 22. Der externe Test stammt ebenfalls aus der
+  MIT-BIH-Sammlung; andere Geräte, Kliniken und Patientengruppen sind damit nicht abgedeckt.
 - **F ist praktisch nicht lernbar.** 373 der 415 F-Schläge in DS1 stammen aus einem einzigen
   Record (208). Das Modell sieht damit im Kern die Fusionsschläge einer Person.
 - **Q ist nicht sinnvoll auswertbar.** Nach dem Ausschluss der Schrittmacher-Records bleiben 8
   Q-Schläge in DS1 und 7 in DS2. Deshalb ist Macro-F1 über N/S/V/F die Hauptzahl.
-- **Referenz-R-Zacken.** Die Hauptauswertung nutzt die Schlagpositionen der Experten. Eine
-  vollautomatische Kette mit Pan-Tompkins (`--detected-peaks`) ist eingebaut, auf DS2 aber noch
-  nicht ausgewertet.
-- **Eine Ableitung, offline.** Nur MLII. Die patientenrelativen Merkmale (`--features patient`)
-  nutzen Statistiken über den ganzen Record, also Holter-Auswertung im Nachhinein, nicht
-  Echtzeit.
-- **Instabiles Training.** Die Modellauswahl auf wenigen Validierungs-Records schwankt stark
-  zwischen Seeds und Folds (Details in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)).
+- **Referenz-R-Zacken im Hauptergebnis.** Die Hauptauswertung nutzt die Schlagpositionen der
+  Experten. Die vollautomatische Kette mit Pan-Tompkins ist ebenfalls ausgewertet; dort fehlen
+  die Schläge, die der Detektor nicht findet.
+- **Eine Ableitung, offline.** Nur MLII; eine zweite Ableitung als zusätzlicher Kanal hat in der
+  Kreuzvalidierung geschadet. Die patientenrelativen Merkmale des finalen Modells nutzen
+  Statistiken über den ganzen Record, also Holter-Auswertung im Nachhinein, nicht Echtzeit.
+- **Streuung zwischen Trainingsläufen.** Einzelmodelle mit verschiedenen Seeds unterscheiden sich
+  deutlich; das Ensemble mildert das, beseitigt es aber nicht (Details in
+  [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)).
 - **Kein Medizinprodukt.** Nicht klinisch validiert, nicht für Diagnose oder Therapie.
 
 ## Methodik-Transparenz
 
-Der Test-Split DS2 soll genau einmal ausgewertet werden, ganz am Ende. Das ist hier bisher nicht
-gelungen, und das gehört offen dazu:
+Der Test-Split DS2 soll genau einmal ausgewertet werden, ganz am Ende. Insgesamt wurde DS2
+**dreimal** ausgewertet; nur die dritte Auswertung ist das Hauptergebnis. Der Ablauf:
 
 1. **Erster Lauf:** CNN mit Validierung auf den DS1-Records 114, 122, 201 und 208, Auswertung auf
    DS2.
 2. **Zweiter Lauf:** Danach fiel auf, dass Record 208 rund 90 % aller F-Schläge von DS1 enthält
    und in der Validierung dem Training fehlte. Die neue Regel („kein Record mit ≥ 40 % einer
    Klasse in der Validierung“) wurde nur aus DS1-Zählungen abgeleitet. Neu trainiert wurde aber
-   in Kenntnis des ersten DS2-Ergebnisses, und DS2 wurde ein zweites Mal ausgewertet. Die
-   aktuellen Zahlen stammen aus diesem zweiten Lauf und sind deshalb leicht optimistisch und
-   **vorläufig**.
-3. **Danach:** Merkmalsvarianten wurden nur noch per Kreuzvalidierung auf DS1 verglichen. Die
-   beste Variante (`patient`) verfehlte die vorab festgelegte Schwelle knapp und wurde nicht
-   übernommen; DS2 wurde dafür nicht angefasst.
+   in Kenntnis des ersten DS2-Ergebnisses, und DS2 wurde ein zweites Mal ausgewertet.
+3. **Modellphase nur auf DS1:** Ab hier fiel jede Entscheidung über die record-gruppierte
+   5-fach-Kreuzvalidierung auf DS1 (3 Seeds), nach einem vorher festgelegten Kriterium: Eine
+   Variante wird nur übernommen, wenn ihr mittlerer Macro-F1 (N/S/V/F) mindestens eine
+   Standardabweichung über der Basis liegt und die N-Sensitivität nicht sinkt. Jedes Experiment
+   steht mit Datum, Konfiguration und Ergebnis in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+   - Verworfen: feste Epochenzahl statt Early Stopping und Augmentierung (A1), weichere
+     Klassengewichte (A2), zweite Ableitung als zweiter Kanal (A3), kalibrierte Klassen-Offsets
+     (A5; verschachtelt geprüft schadeten sie).
+   - Übernommen: patientenrelative Merkmale (A4) und das Seed-Ensemble (A6).
+4. **Finale Auswertung:** Die Konfiguration wurde vor der Auswertung committet (`72b1cab`) und DS2
+   damit genau einmal ausgewertet, mit Experten- und mit Pan-Tompkins-R-Zacken (A7). Danach lief
+   der externe Test ohne Nachtraining (A8).
 
-**Regel ab jetzt** (Details in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) und
-[docs/PLAN.md](docs/PLAN.md)):
+**Nachtrag zum Kriterium, offen benannt:** Das Kriterium „mindestens eine Standardabweichung
+über der Basis“ wurde festgelegt, als das CV-Ergebnis der patientenrelativen Merkmale schon
+bekannt war. Unter der davor geltenden, etwas strengeren Regel wäre diese Variante knapp nicht
+übernommen worden. Praktisch ist der Unterschied klein: Als Seed-Ensemble liegen Basis und
+patientenrelative Variante in der Kreuzvalidierung gleichauf. Die Wahl ist also kein klarer
+Gewinn, sondern eine Entscheidung nach vorab notierter Regel.
 
-- Alle Entscheidungen (Merkmale, Gewichte, Schwellen, Epochen) fallen über die record-gruppierte
-  5-fach-Kreuzvalidierung auf DS1 mit 3 Seeds.
-- Das Kriterium steht vorher fest: Eine Variante ersetzt die Basis nur, wenn ihr mittlerer
-  Macro-F1 (N/S/V/F) mindestens eine Standardabweichung höher liegt und die N-Sensitivität nicht
-  sinkt.
-- Jedes Experiment wird mit Datum, Konfiguration und Ergebnis protokolliert.
-- Die finale Konfiguration wird vor der Auswertung committet. DS2 wird dann **genau einmal**
-  ausgewertet und berichtet, egal wie das Ergebnis ausfällt.
+**Was das für die Zahlen bedeutet:** Die finale DS2-Auswertung lief mit eingefrorener
+Konfiguration. Weil DS2 aber schon vorher zweimal ausgewertet wurde und die DS2-Werte über der
+Kreuzvalidierung liegen, ist die CV auf DS1 die vorsichtigere Schätzung dafür, wie das Modell auf
+neue Patienten wirkt.
 
 ## Gebaut mit KI-Agenten
 
@@ -183,8 +213,9 @@ flowchart LR
   die Schwellen-Erholung im Pan-Tompkins-Detektor, die QRS-Breite, gedeckelte Klassengewichte und
   einen Cache-Schlüssel mit Code-Hash.
 - **Welle 4:** Aus der Cloud-Umgebung war physionet.org nicht erreichbar, deshalb entstanden dort
-  noch keine Modellergebnisse. Das Volltraining lief danach lokal unter Windows, inklusive Portierung des
-  Datei-Locks.
+  noch keine Modellergebnisse. Das Volltraining lief danach lokal unter Windows, inklusive
+  Portierung des Datei-Locks. Auch die Modellphase (Experimente A1–A8) lief lokal, geführt über
+  [docs/PLAN.md](docs/PLAN.md) und [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ### Regeln für die Zusammenarbeit
 
@@ -210,7 +241,7 @@ flowchart LR
 - **Lokale Phase:** Daten und Volltraining auf meinem Rechner, nachdem die Cloud-Umgebung die
   Datenbank nicht laden konnte.
 - **Kurs nach den ersten Ergebnissen:** erst das Modell verbessern, dann veröffentlichen; DS2
-  bleibt bis zur finalen Auswertung gesperrt ([docs/PLAN.md](docs/PLAN.md)).
+  blieb bis zur finalen Auswertung gesperrt ([docs/PLAN.md](docs/PLAN.md)).
 - **Kontrolle:** Kennzahlen in Texten gegen die exportierten Ergebnisse prüfen; das Repo wird erst
   nach einer Prüfung auf private Daten öffentlich.
 
@@ -231,8 +262,9 @@ Rohsignal (MLII, 360 Hz)
   → Baseline-Entfernung (Median 200 ms, dann 600 ms)
   → Bandpass 0,5–40 Hz (Butterworth 4. Ordnung, nullphasig)
   → R-Zacken (Experten-Annotationen; alternativ Pan-Tompkins)
-  → Segmentierung (250 ms vor / 450 ms nach R = 252 Samples, z-normiert) + 4 RR-Merkmale
-  → ECGNet1D (3 × Conv1d/BN/ReLU/MaxPool, 16/32/64 Kanäle, RR-Zweig)
+  → Segmentierung (250 ms vor / 450 ms nach R = 252 Samples, z-normiert)
+    + 4 RR-Merkmale + 6 patientenrelative Merkmale (relativ zum eigenen Record)
+  → ECGNet1D (3 × Conv1d/BN/ReLU/MaxPool, 16/32/64 Kanäle, Merkmalszweig), 5 Seeds gemittelt
     und Entscheidungsbaum (11 interpretierbare Merkmale, Tiefe 4)
   → AAMI-Klasse N/S/V/F/Q → Sensitivität, PPV, F1 je Klasse, Macro-F1
 ```
@@ -248,13 +280,13 @@ Rohsignal (MLII, 360 Hz)
 | `ekg.models.tree_baseline` | Merkmale, Entscheidungsbaum, Export (JSON/Mermaid) |
 | `ekg.training.train` | Trainingsschleife (gedeckelte Klassengewichte, Early Stopping, Cosine-Schedule, Augmentierung) |
 | `ekg.evaluation.metrics` | Konfusionsmatrix, AAMI-Metriken, Gross-/Average-Statistik mit VEB-Regel |
-| `ekg.pipeline` | CLI: `demo`, `prepare`, `train`, `cv`, `smoke`, `export-state` |
+| `ekg.pipeline` | CLI: `demo`, `prepare`, `train`, `cv`, `oof`, `external`, `smoke`, `export-state` |
 | `ekg.api.server` | FastAPI: `/api/health`, `/api/state`, `/api/data/{name}`, gebaute UI |
 
 Die Web-Oberfläche (`web/`) hat vier Ansichten: **Übersicht** (mit Rhythmus-Player auf
 Record 100), **Process** (jeder Schritt mit Diagramm, echten Daten und Verweis auf den Code),
-**Modelle** (CNN und Baum gegen Zufalls-Baselines) und **Agenten-Status** (aus
-`project_state.json`). Die Live-Seite wird per [GitHub Actions](.github/workflows/pages.yml)
+**Modelle** (CNN und Baum gegen Zufalls-Baselines) und **Wie es gebaut wurde** (Agenten-Status
+aus `project_state.json`). Die Live-Seite wird per [GitHub Actions](.github/workflows/pages.yml)
 statisch gebaut (`VITE_STATIC_SITE=1`, ohne API).
 
 ## Quickstart
@@ -301,17 +333,29 @@ Alle Befehle aus dem Repo-Root. Unter Windows `python` durch `.venv\Scripts\pyth
 | Web-Exporte aus Record 100 | `make demo` | `python -m ekg.pipeline demo --record data/sample/100 --out web/public/data --data-dir data/mitdb` |
 | Mechanik-Test (1 Epoche, nur `artifacts/smoke/`) | `make smoke` | `python -m ekg.pipeline smoke --record data/sample/100 --out artifacts/smoke` |
 | Beat-Cache für DS1/DS2 | `make prepare` | `python -m ekg.pipeline prepare --data-dir data/mitdb --cache artifacts/beats` |
-| Kreuzvalidierung nur auf DS1 | `make cv FEATURES=base` | `python -m ekg.pipeline cv --data-dir data/mitdb --features base` |
-| Training DS1, **Auswertung DS2** | `make train EPOCHS=20` | `python -m ekg.pipeline train --data-dir data/mitdb --out artifacts --export web/public/data --epochs 20` |
+| Kreuzvalidierung nur auf DS1 | `make cv FEATURES=patient` | `python -m ekg.pipeline cv --data-dir data/mitdb --features patient` |
+| Training DS1, **Auswertung DS2** | `make train EPOCHS=20` | siehe unten (finale Konfiguration) |
+| Externer Test (Daten nach `data/svdb`) | – | `python -m ekg.pipeline external --models artifacts --data-dir data/svdb` |
 | Status für die UI kopieren | `make state` | `python -m ekg.pipeline export-state --out web/public/data` |
 
-> `train` wertet auf DS2 aus. Im Projekt passiert das nur noch einmal, mit der eingefrorenen
-> finalen Konfiguration (siehe [Methodik-Transparenz](#methodik-transparenz)). Für alle
-> Experimente ist `cv` da.
+Finale Konfiguration (A7), wie in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) eingefroren:
 
-`prepare` und `train` brechen mit Exit-Code 2 und einer Liste der fehlenden Records ab, solange
-DS1/DS2 nicht vollständig vorliegen. `demo` überschreibt ein vorhandenes `metrics.json` oder
-`dataset_stats.json` mit `status: "complete"` nicht (außer mit `--force`).
+```bash
+python -m ekg.pipeline train --features patient --seeds 0 1 2 3 4 --max-class-share 0.4 \
+  --eval-detected --cv-report artifacts/cv/cv_patient_es.json
+```
+
+> `train` wertet auf DS2 aus. Die finale Auswertung ist gelaufen; jede weitere Auswertung auf DS2
+> wäre wieder ein Blick auf den Test-Split (siehe [Methodik-Transparenz](#methodik-transparenz)).
+> Für Experimente ist `cv` da.
+
+`make train` nutzt die Standardwerte (ohne Ensemble und patientenrelative Merkmale). `prepare` und
+`train` brechen mit Exit-Code 2 und einer Liste der fehlenden Records ab, solange DS1/DS2 nicht
+vollständig vorliegen. `demo` überschreibt ein vorhandenes `metrics.json` oder
+`dataset_stats.json` mit `status: "complete"` nicht (außer mit `--force`). Für den externen Test
+die Dateien der MIT-BIH Supraventricular Arrhythmia Database (`*.hea`, `*.dat`, `*.atr`) von
+PhysioNet nach `data/svdb` legen, z. B. mit `wfdb.dl_database("svdb", "data/svdb")`. `external`
+schreibt das Ergebnis zusätzlich als `external` in `metrics.json`.
 
 ### Optionen von `cv`
 
@@ -328,6 +372,8 @@ Ausgabe: `artifacts/cv/cv_<features>[_<tag>].json`.
 | `--eval-epochs E …` | – | Out-of-fold-Auswertung zusätzlich nach diesen Epochen (`by_epoch` im Bericht), um aus einem Lauf eine feste Epochenzahl zu wählen |
 | `--lr-schedule cosine` | aus | Cosine-Lernratenplan |
 | `--augment` | aus | Amplitude ±10 %, Gaußrauschen (σ = 0,05 in z-Einheiten), Zeitverschiebung ±3 Samples |
+| `--weight-power P` | `1.0` | Exponent der inversen Klassengewichte (`0.5` = Wurzel, weicher) |
+| `--leads 1\|2` | `1` | `2` = zweite Ableitung als zusätzlicher CNN-Kanal |
 | `--tag NAME` | – | Namenszusatz der Ausgabedatei, damit Varianten sich nicht überschreiben |
 | `--max-class-share X` | `0.4` | Records mit mindestens diesem Anteil einer Klasse kommen nie in die Validierung |
 | `--detected-peaks` | aus | Pan-Tompkins-R-Zacken statt Experten-Annotationen |
@@ -353,7 +399,7 @@ python -m ekg.pipeline cv --features base --n-val 0 --epochs 15 --lr-schedule co
 ├── data/mitdb/            vollständige Datenbank (nach `make data`, nicht im Repo)
 ├── docs/
 │   ├── PLAN.md            Fahrplan bis zur Veröffentlichung
-│   ├── EXPERIMENTS.md     Experiment-Protokoll (Regeln, CV-Läufe)
+│   ├── EXPERIMENTS.md     Experiment-Protokoll (Regeln, CV-Läufe, finale Auswertung)
 │   └── screenshots/
 ├── scripts/
 │   ├── state.py           lock-sicheres Status-Protokoll für Agenten
