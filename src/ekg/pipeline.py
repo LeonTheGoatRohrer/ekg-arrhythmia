@@ -1256,6 +1256,94 @@ def analyze_oof(report_path: str | Path) -> dict:
     return out
 
 
+EXTERNAL_DBS = {"svdb": "MIT-BIH Supraventricular Arrhythmia Database"}
+
+
+def _resample(x: np.ndarray, fs: int, fs_target: int) -> np.ndarray:
+    from fractions import Fraction
+
+    from scipy.signal import resample_poly
+
+    f = Fraction(fs_target, fs).limit_denominator(1000)
+    return resample_poly(np.asarray(x, dtype=np.float64), f.numerator, f.denominator).astype(np.float32)
+
+
+def load_external_beats(name: str, data_dir: str | Path, fs_target: int = 360,
+                        leads: int = 1) -> tuple[BeatSet, int, str]:
+    """Beats of a record from another database, resampled to ``fs_target`` first.
+
+    Channel 0 is lead 1 (``load_record`` falls back to it without an MLII channel),
+    channel 1 the optional second lead. Annotation positions are scaled to the new rate.
+    Returns ``(beatset, original_fs, lead_name)``.
+    """
+    import wfdb
+
+    rec = load_record(name, data_dir)
+    fs0 = int(rec.fs)
+    if fs0 != fs_target:
+        rec = dataclasses.replace(rec, signal=_resample(rec.signal, fs0, fs_target), fs=fs_target,
+                                  ann_samples=np.round(rec.ann_samples * fs_target / fs0).astype(np.int64))
+    bs = build_beat_dataset(rec, use_reference_peaks=True)
+    if leads == 2:
+        raw = wfdb.rdrecord(str(Path(data_dir) / name))
+        ch = next(i for i, n in enumerate(raw.sig_name) if n != rec.lead)
+        x = preprocess(_resample(raw.p_signal[:, ch], fs0, fs_target), fs_target)
+        pre, post = window_samples(fs_target)
+        b2 = np.stack([x[r - pre:r + post] for r in bs.r_sample]) if len(bs) else np.empty((0, pre + post))
+        bs = dataclasses.replace(bs, beats2=znormalize(b2).astype(np.float32))
+    return bs, fs0, rec.lead
+
+
+def run_external(model_dir: str | Path, data_dir: str | Path, out_path: str | Path, *, db: str = "svdb",
+                 metrics_paths: Sequence[str | Path] = ()) -> dict:
+    """Evaluate the trained CNN (ensemble + offsets from ``ensemble.json``) on another database.
+
+    No retraining and no tuning: the models from ``train`` are applied as they are. The
+    result is written to ``out_path`` and, if given, added as ``external`` to each
+    ``metrics.json`` in ``metrics_paths``.
+    """
+    from ekg.evaluation.metrics import gross_statistics, summary
+    from ekg.training.train import load_model, predict_logits
+
+    model_dir = Path(model_dir)
+    ens = _read_json(model_dir / "ensemble.json") or {"seeds": [0], "features": "base", "leads": 1, "offsets": {}}
+    paths = [model_dir / f"model_seed{s_}.pt" for s_ in ens["seeds"]]
+    models = [load_model(p) for p in paths] if all(p.exists() for p in paths) else [load_model(model_dir / "model.pt")]
+    b = np.array([float(ens["offsets"].get(c, 0.0)) for c in CLASSES])
+    names = available_records(data_dir)
+    sets, fs0, lead = [], None, None
+    for name in names:
+        bs, fs0, lead = load_external_beats(name, data_dir, leads=int(ens["leads"]))
+        sets.append(bs)
+        _log(f"{db} {name}: {len(bs)} Beats")
+    data = BeatSet.concat(sets)
+    logits = [predict_logits(m, with_features(data, ens["features"])) for m in models]
+    y = (ensemble_log_probs(logits) + b).argmax(axis=1) if len(models) > 1 or b.any() else logits[0].argmax(axis=1)
+    out = {
+        "database": EXTERNAL_DBS.get(db, db),
+        "records": len(names),
+        "fs_original": fs0,
+        "resampled_to": 360,
+        "lead": f"{lead} (Ableitung in der Datenbank nicht angegeben)" if db == "svdb" else lead,
+        "beats": _class_counts(data.labels),
+        "note": "Modelle unverändert aus DS1 übernommen, kein Nachtraining, keine Anpassung.",
+        "cnn": {"summary": summary(data.labels, y, CLASSES),
+                "gross_statistics": gross_statistics(_per_record_cms(data.labels, y, np.asarray(data.record)),
+                                                     CLASSES)},
+    }
+    _write_json(Path(out_path), out)
+    for mp in metrics_paths:
+        m = _read_json(Path(mp))
+        if m:
+            m["external"] = out
+            _write_json(Path(mp), m)
+    s = out["cnn"]["summary"]
+    _log(f"Extern ({db}): macro_f1_nsvf = {s['macro_f1_nsvf']:.4f}, S Se/PPV = "
+         f"{s['per_class']['S']['sensitivity']:.3f}/{s['per_class']['S']['ppv']:.3f}, V Se/PPV = "
+         f"{s['per_class']['V']['sensitivity']:.3f}/{s['per_class']['V']['ppv']:.3f}")
+    return out
+
+
 def _cv_block(report_path: str | Path) -> dict:
     """Compact CV result of the chosen configuration for metrics.json (plus OOF analysis if present)."""
     p = Path(report_path)
@@ -1402,6 +1490,14 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Exponent der Klassengewichte (1 = invers, 0.5 = Wurzel)")
     c.add_argument("--leads", type=int, choices=[1, 2], default=1, help="2 = zweite Ableitung als CNN-Kanal")
 
+    x = sub.add_parser("external", help="Trainiertes Modell unverändert auf einer anderen Datenbank testen")
+    x.add_argument("--models", default="artifacts", help="Ordner mit model*.pt und ensemble.json")
+    x.add_argument("--data-dir", default="data/svdb")
+    x.add_argument("--db", default="svdb")
+    x.add_argument("--out", default="artifacts/external_svdb.json")
+    x.add_argument("--metrics", nargs="*", default=["web/public/data/metrics.json", "artifacts/web/metrics.json"],
+                   help="metrics.json-Dateien, in die das Ergebnis als 'external' eingetragen wird")
+
     o = sub.add_parser("oof", help="Ensemble und Klassen-Offsets aus gespeicherten CV-Vorhersagen (A5/A6)")
     o.add_argument("reports", nargs="+", help="cv_*.json (daneben muss *_oof.npz liegen)")
 
@@ -1439,6 +1535,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                    max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks,
                    lr_schedule=args.lr_schedule, augment=args.augment, eval_epochs=args.eval_epochs, tag=args.tag,
                    weight_power=args.weight_power, leads=args.leads)
+        elif args.cmd == "external":
+            run_external(args.models, args.data_dir, args.out, db=args.db, metrics_paths=args.metrics)
         elif args.cmd == "oof":
             for r in args.reports:
                 analyze_oof(r)

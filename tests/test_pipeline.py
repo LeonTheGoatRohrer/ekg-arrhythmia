@@ -418,3 +418,37 @@ def test_train_seed_ensemble_offsets_two_leads_and_detected_peaks(tmp_path):
         assert (tmp_path / "art" / f"model_seed{s_}.pt").exists()
     from ekg.training.train import load_model
     assert load_model(tmp_path / "art" / "model.pt").in_channels == 2
+
+
+def _external_128hz_record(dirpath: Path, name: str = "ext1", seconds: int = 120) -> None:
+    """A 128 Hz two-channel record made from the first minutes of record 100."""
+    import wfdb
+    n = 360 * seconds
+    rec = wfdb.rdrecord(str(SAMPLE / "100"), sampto=n)
+    ann = wfdb.rdann(str(SAMPLE / "100"), "atr", sampto=n)
+    x = np.stack([pipeline._resample(rec.p_signal[:, i], 360, 128) for i in range(2)], axis=1)
+    dirpath.mkdir(parents=True, exist_ok=True)
+    wfdb.wrsamp(name, fs=128, units=["mV", "mV"], sig_name=["ECG1", "ECG2"], p_signal=x.astype(np.float64),
+                fmt=["16", "16"], write_dir=str(dirpath))
+    keep = ann.sample < n
+    wfdb.wrann(name, "atr", np.round(ann.sample[keep] * 128 / 360).astype(np.int64),
+               symbol=list(np.asarray(ann.symbol)[keep]), write_dir=str(dirpath))
+
+
+def test_external_database_resampled_and_evaluated(tmp_path):
+    from ekg.training.train import save_model, train_cnn
+    ext = tmp_path / "svdb"
+    _external_128hz_record(ext)
+    bs, fs0, lead = pipeline.load_external_beats("ext1", ext, leads=2)
+    assert fs0 == 128 and lead == "ECG1"
+    assert bs.beats.shape[1] == 252 and bs.beats2.shape == bs.beats.shape
+    assert 140 <= len(bs) <= 160  # ~2 min at ~75 bpm
+    model, _ = train_cnn(bs, None, epochs=1, seed=0)
+    save_model(model, tmp_path / "models" / "model.pt")
+    pipeline._write_json(tmp_path / "models" / "ensemble.json",
+                         {"seeds": [0], "features": "base", "leads": 2, "offsets": {}})
+    metrics = tmp_path / "metrics.json"
+    pipeline._write_json(metrics, {"status": "complete"})
+    out = pipeline.run_external(tmp_path / "models", ext, tmp_path / "ext.json", metrics_paths=[metrics])
+    assert out["records"] == 1 and out["cnn"]["summary"]["n"] == len(bs)
+    assert pipeline._read_json(metrics)["external"]["fs_original"] == 128
