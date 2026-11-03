@@ -1251,11 +1251,10 @@ not be used to diagnose or treat anyone.</p></div>
 <ul>
 <li>Strict inter-patient split; no record in both DS1 and DS2 (the only shared person, 201/202, is disclosed).</li>
 <li>Per-class sensitivity, PPV and F1 as the main metrics; accuracy only as a side note.</li>
-<li>Model selection, early stopping and every design decision on DS1 only; a selection rule (improvement of at least
-one standard deviation in cross-validation, without losing N sensitivity) was fixed <em>before</em> the experiments
-and is applied even when a promising variant narrowly fails it.</li>
-<li>All experiments logged with date, configuration and result in <code>docs/EXPERIMENTS.md</code>; the web interface
-shows empty states instead of placeholder numbers whenever a result does not exist.</li>
+<li>Every design decision on DS1 only, by a selection rule (+1 standard deviation in cross-validation, N sensitivity
+not lower) written down before the main experiments. Caveat: it was set after a first CV round, whose stricter rule
+the chosen features would narrowly have failed.</li>
+<li>All experiments logged in <code>docs/EXPERIMENTS.md</code>; the web interface never shows placeholder numbers.</li>
 </ul>"""
     return section("6 · Limitations", "Limitations and honest methodology", body)
 
