@@ -131,3 +131,24 @@ der davor geltenden, strengeren Regel aus der ersten CV-Runde („Mittelwert > B
 beiden Std“, also > 0,484) wäre `patient` knapp nicht übernommen worden. Praktisch ist der
 Unterschied klein: Mit Seed-Ensemble liegen Basis und `patient` in der CV gleichauf (0,486 vs.
 0,483).
+
+## A7 – finale DS2-Auswertung (2026-11-03, genau einmal, Konfiguration aus Commit `72b1cab`)
+
+Seed-Ensemble aus 5 CNNs (Seeds 0–4), Validierungs-Records je Seed aus DS1
+(0: 114/119/122/205 · 1: 116/118/205/230 · 2: 106/112/114/205 · 3: 106/109/112/201 ·
+4: 119/124/215/220), beste Epochen 2/2/5/1/4. Test: DS2, 22 Records, 49 692 Schläge.
+
+| | macro_f1_nsvf | macro_f1 | N Se / PPV | S Se / PPV | V Se / PPV | F Se / PPV |
+|---|---|---|---|---|---|---|
+| CNN-Ensemble, Experten-R-Zacken | **0,592** | 0,474 | 93,7 / 98,0 % | 66,1 / 43,0 % | 97,2 / 81,3 % | 0,8 / 0,4 % |
+| Einzelmodelle (Mittel ± Std, 5 Seeds) | 0,564 ± 0,048 | 0,451 ± 0,038 | | | | |
+| CNN-Ensemble, Pan-Tompkins-R-Zacken | 0,585 | 0,468 | 93,4 / 97,8 % | 64,8 / 41,3 % | 95,5 / 80,5 % | 1,0 / 0,5 % |
+| Entscheidungsbaum (Tiefe 4) | 0,356 | 0,286 | 60,0 / 95,0 % | 7,1 / 1,9 % | 82,4 / 54,6 % | 1,8 / 0,1 % |
+
+Pan-Tompkins auf allen 22 DS2-Records (±150 ms): TP 49 411, FP 106, FN 301 → Se 99,39 %,
+PPV 99,79 %. In der Ende-zu-Ende-Zeile fehlen die 301 nicht gefundenen Schläge (sie werden nicht
+klassifiziert).
+
+Einordnung: Die DS2-Werte liegen über der CV auf DS1 (0,483 mit Ensemble). DS2 ist für dieses
+Modell offenbar etwas „leichter“ als die DS1-Folds; die CV-Zahl ist die vorsichtigere Schätzung.
+Größte Fehlerquelle bleibt S ↔ N (1 545 N als S, 523 S als N); F wird praktisch nicht erkannt.
