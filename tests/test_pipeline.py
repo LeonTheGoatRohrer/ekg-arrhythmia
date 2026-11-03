@@ -397,3 +397,24 @@ def test_fit_class_offsets_recovers_shifted_class():
     assert b[1] > 1.0 and after > before
     ens = pipeline.ensemble_log_probs([logits, logits])
     np.testing.assert_allclose(ens, logp, atol=1e-9)
+
+
+def test_train_seed_ensemble_offsets_two_leads_and_detected_peaks(tmp_path):
+    ds1, ds2 = ["901", "902", "903"], ["904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, ds1 + ds2)
+    offsets = {"N": 0.0, "S": 0.5, "V": 0.0, "F": -1.0, "Q": 0.0}
+    m = pipeline.run_train(data, tmp_path / "art", None, epochs=1, patience=None, n_val=1, ds1=ds1, ds2=ds2,
+                           seeds=[0, 1], leads=2, offsets=offsets, eval_detected=True)
+    ens = m["cnn"]["ensemble"]
+    assert ens["seeds"] == [0, 1] and ens["offsets"] == offsets
+    assert set(ens["val_records"]) == {"0", "1"}
+    assert len(m["cnn"]["per_seed"]) == 2 and set(m["cnn"]["per_seed_aggregate"]) == {"macro_f1_nsvf", "macro_f1"}
+    assert m["config"]["leads"] == 2 and m["config"]["lead2_names"]["904"] == "V5"
+    det = m["detected_peaks"]
+    assert det["detector"]["records"] == 1 and det["detector"]["sensitivity"] > 0.99
+    assert det["cnn"]["summary"]["n"] == det["beats"] > 0
+    for s_ in (0, 1):
+        assert (tmp_path / "art" / f"model_seed{s_}.pt").exists()
+    from ekg.training.train import load_model
+    assert load_model(tmp_path / "art" / "model.pt").in_channels == 2

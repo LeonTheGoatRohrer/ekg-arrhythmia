@@ -821,18 +821,29 @@ def _per_record_cms(y_true: np.ndarray, y_pred: np.ndarray, records: np.ndarray)
     return out
 
 
+def _compact_summary(s: dict) -> dict:
+    return {"macro_f1_nsvf": s["macro_f1_nsvf"], "macro_f1": s["macro_f1"],
+            "per_class": {c: {m: s["per_class"][c][m] for m in ("sensitivity", "ppv", "f1")} for c in CLASSES}}
+
+
 def fit_and_evaluate(train: BeatSet, val: BeatSet | None, test: BeatSet, *, tree_train: BeatSet,
                      epochs: int = 20, patience: int | None = 5, lr: float = 1e-3, batch_size: int = 256,
-                     seed: int = 0, max_depth: int = 4, fs: int = 360, features: str = "base") -> dict:
+                     seed: int = 0, max_depth: int = 4, fs: int = 360, features: str = "base",
+                     members: Sequence[tuple[int, BeatSet, BeatSet | None]] | None = None,
+                     weight_power: float = 1.0, augment: bool = False, offsets: dict | None = None,
+                     extra_tests: dict[str, BeatSet] | None = None) -> dict:
     """Shared core of ``train`` and ``smoke``: CNN + tree fit, evaluation on ``test``.
 
     ``features`` selects the CNN inputs (FEATURE_SETS); the tree always uses its own
-    interpretable features.
+    interpretable features. ``members`` = ``[(seed, train, val), ...]`` trains a seed
+    ensemble (mean softmax); default is the single member ``(seed, train, val)``.
+    ``offsets`` (per class, added to the ensemble log-probabilities) must come from DS1
+    out-of-fold data. ``extra_tests`` ({name: BeatSet}) are evaluated with the same models.
     """
     from ekg.evaluation.metrics import gross_statistics, summary
     from ekg.models.cnn1d import count_parameters
     from ekg.models.tree_baseline import export_tree, extract_features, train_tree
-    from ekg.training.train import predict, train_cnn
+    from ekg.training.train import predict_logits, train_cnn
 
     t0 = time.perf_counter()
 
@@ -841,45 +852,88 @@ def fit_and_evaluate(train: BeatSet, val: BeatSet | None, test: BeatSet, *, tree
         _log(f"Epoche {e['epoch']}: train_loss={e['train_loss']:.4f}"
              + (f" val_macro_f1={vf:.4f}" if vf is not None else ""))
 
-    model, history = train_cnn(with_features(train, features, fs),
-                               with_features(val, features, fs) if val is not None else None,
-                               epochs=epochs, lr=lr, batch_size=batch_size, seed=seed,
-                               patience=patience if val is not None else None, on_epoch=on_epoch)
-    y_cnn = predict(model, with_features(test, features, fs))
-    cnn_summary = summary(test.labels, y_cnn, CLASSES)
-    cnn_gross = gross_statistics(_per_record_cms(test.labels, y_cnn, np.asarray(test.record)), CLASSES)
+    members = list(members) if members else [(seed, train, val)]
+    b = np.array([float((offsets or {}).get(c, 0.0)) for c in CLASSES])
+    models, histories = [], []
+    for m_seed, m_train, m_val in members:
+        if len(members) > 1:
+            _log(f"CNN Seed {m_seed}")
+        model, history = train_cnn(with_features(m_train, features, fs),
+                                   with_features(m_val, features, fs) if m_val is not None else None,
+                                   epochs=epochs, lr=lr, batch_size=batch_size, seed=m_seed,
+                                   patience=patience if m_val is not None else None, on_epoch=on_epoch,
+                                   weight_power=weight_power, augment=augment)
+        models.append(model)
+        histories.append(history)
 
     X_tr, feat_names = extract_features(tree_train.beats, tree_train.rr, fs)
     tree = train_tree(X_tr, tree_train.labels, max_depth=max_depth, random_state=seed)
-    X_te, _ = extract_features(test.beats, test.rr, fs)
-    y_tree = tree.predict(X_te).astype(np.int64)
-    tree_summary = summary(test.labels, y_tree, CLASSES)
-    tree_gross = gross_statistics(_per_record_cms(test.labels, y_tree, np.asarray(test.record)), CLASSES)
 
-    best = [h["epoch"] for h in history if h.get("best")]
+    def gross(bs: BeatSet, y: np.ndarray) -> dict:
+        return gross_statistics(_per_record_cms(bs.labels, y, np.asarray(bs.record)), CLASSES)
+
+    def evaluate(bs: BeatSet) -> tuple[dict, dict]:
+        logits = [predict_logits(m, with_features(bs, features, fs)) for m in models]
+        if len(models) > 1 or b.any():
+            y_cnn = (ensemble_log_probs(logits) + b).argmax(axis=1)
+        else:
+            y_cnn = logits[0].argmax(axis=1)
+        cnn = {"summary": summary(bs.labels, y_cnn, CLASSES), "gross_statistics": gross(bs, y_cnn)}
+        if len(models) > 1:
+            per_seed = [summary(bs.labels, lg.argmax(axis=1), CLASSES) for lg in logits]
+            cnn["per_seed"] = [_compact_summary(ps) for ps in per_seed]
+            cnn["per_seed_aggregate"] = {k: {"mean": float(np.mean([ps[k] for ps in per_seed])),
+                                             "std": float(np.std([ps[k] for ps in per_seed], ddof=1))}
+                                         for k in ("macro_f1_nsvf", "macro_f1")}
+        y_tree = tree.predict(extract_features(bs.beats, bs.rr, fs)[0]).astype(np.int64)
+        return cnn, {"summary": summary(bs.labels, y_tree, CLASSES), "gross_statistics": gross(bs, y_tree)}
+
+    cnn_res, tree_res = evaluate(test)
+    best = [[h["epoch"] for h in hist if h.get("best")] for hist in histories]
+    cnn_res.update({
+        "history": histories[0],
+        "params": int(count_parameters(models[0])),
+        "epochs_run": len(histories[0]),
+        "best_epoch": best[0][-1] if best[0] else None,
+    })
+    if len(members) > 1 or b.any():
+        cnn_res["ensemble"] = {"seeds": [int(m[0]) for m in members],
+                               "best_epochs": [bb[-1] if bb else None for bb in best],
+                               "epochs_run": [len(h) for h in histories],
+                               "offsets": {c: float(b[i]) for i, c in enumerate(CLASSES)}}
+    tree_res.update({
+        "max_depth": int(max_depth),
+        "depth": int(tree.get_depth()),
+        "n_leaves": int(tree.get_n_leaves()),
+        "features": feat_names,
+        "trained_on_beats": int(len(tree_train)),
+    })
+    extra = {}
+    for name, bs in (extra_tests or {}).items():
+        c, t = evaluate(bs)
+        extra[name] = {"cnn": c, "tree": t}
     return {
-        "model": model,
+        "model": models[0],
+        "models": models,
         "tree": tree,
         "tree_json": export_tree(tree, feat_names, CLASSES),
-        "cnn": {
-            "summary": cnn_summary,
-            "history": history,
-            "gross_statistics": cnn_gross,
-            "params": int(count_parameters(model)),
-            "epochs_run": len(history),
-            "best_epoch": best[-1] if best else None,
-        },
-        "tree_result": {
-            "summary": tree_summary,
-            "gross_statistics": tree_gross,
-            "max_depth": int(max_depth),
-            "depth": int(tree.get_depth()),
-            "n_leaves": int(tree.get_n_leaves()),
-            "features": feat_names,
-            "trained_on_beats": int(len(tree_train)),
-        },
+        "cnn": cnn_res,
+        "tree_result": tree_res,
+        "extra": extra,
         "seconds": round(time.perf_counter() - t0, 2),
     }
+
+
+def detection_stats(data_dir: str | Path, names: Sequence[str], tol_ms: float = DETECTION_TOL_MS) -> dict:
+    """Pan-Tompkins against the reference beat annotations, pooled over ``names``."""
+    tp = fp = fn = 0
+    for name in names:
+        rec = load_record(name, data_dir)
+        ref, _, _ = _reference_beats(rec)
+        m = match_peaks(detect_r_peaks(preprocess(rec.signal, rec.fs), rec.fs), ref, rec.fs, tol_ms=tol_ms)
+        tp, fp, fn = tp + m["tp"], fp + m["fp"], fn + m["fn"]
+    return {"records": len(names), "tol_ms": tol_ms, "tp": tp, "fp": fp, "fn": fn,
+            "sensitivity": tp / (tp + fn) if tp + fn else 0.0, "ppv": tp / (tp + fp) if tp + fp else 0.0}
 
 
 def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path | None, *,
@@ -887,34 +941,72 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
               lr: float = 1e-3, batch_size: int = 256, seed: int = 0, n_val: int = DEFAULT_VAL_RECORDS,
               val_records: Sequence[str] | None = None, max_depth: int = 4,
               use_reference_peaks: bool = True, ds1: Sequence[str] = DS1,
-              ds2: Sequence[str] = DS2, features: str = "base") -> dict:
-    """Full inter-patient training DS1 -> DS2. Raises DataIncompleteError without the data."""
+              ds2: Sequence[str] = DS2, features: str = "base", seeds: Sequence[int] | None = None,
+              max_class_share: float | None = None, weight_power: float = 1.0, augment: bool = False,
+              leads: int = 1, offsets: dict | None = None, eval_detected: bool = False,
+              cv_summary: dict | None = None) -> dict:
+    """Full inter-patient training DS1 -> DS2. Raises DataIncompleteError without the data.
+
+    ``seeds`` trains a seed ensemble; each seed draws its own validation records from DS1
+    (unless ``val_records`` fixes them). ``eval_detected`` additionally evaluates on the
+    beats found by Pan-Tompkins in DS2 (realistic end-to-end) and reports the detector.
+    """
     from ekg.training.train import save_model
 
     out_dir = Path(out_dir)
     cache_dir = Path(cache_dir) if cache_dir else out_dir / "beats"
     splits = prepare_splits(data_dir, cache_dir, use_reference_peaks=use_reference_peaks, ds1=ds1, ds2=ds2)
     ds1_sets, ds2_sets = splits["DS1"], splits["DS2"]
+    lead_names: dict[str, str] = {}
+    if leads == 2:
+        ds1_sets, ln1 = with_lead2(ds1_sets, data_dir, cache_dir, use_reference_peaks)
+        ds2_sets, ln2 = with_lead2(ds2_sets, data_dir, cache_dir, use_reference_peaks)
+        lead_names = {**ln1, **ln2}
 
+    seeds = [int(x) for x in seeds] if seeds else [int(seed)]
+    labels = {r: bs.labels for r, bs in ds1_sets.items()}
     if val_records:
-        val_names = sorted(str(v) for v in val_records)
-        bad = [v for v in val_names if v not in ds1_sets]
+        fixed = sorted(str(v) for v in val_records)
+        bad = [v for v in fixed if v not in ds1_sets]
         if bad:
             raise ValueError(f"Validierungs-Records müssen aus DS1 stammen: {bad}")
+        val_by_seed = {s_: fixed for s_ in seeds}
     else:
-        val_names = select_validation_records({r: bs.labels for r, bs in ds1_sets.items()}, n_val, seed)
-    train_names = [r for r in sorted(ds1_sets) if r not in val_names]
-    assert not set(val_names) & set(ds2_sets), "validation must never use DS2"
+        val_by_seed = {s_: select_validation_records(labels, n_val, s_, max_class_share=max_class_share)
+                       for s_ in seeds}
+    for v in val_by_seed.values():
+        assert not set(v) & set(ds2_sets), "validation must never use DS2"
 
-    train = BeatSet.concat([ds1_sets[r] for r in train_names])
-    val = BeatSet.concat([ds1_sets[r] for r in val_names])
+    def split_for(s_: int) -> tuple[int, BeatSet, BeatSet]:
+        v = val_by_seed[s_]
+        return (s_, BeatSet.concat([ds1_sets[r] for r in sorted(ds1_sets) if r not in v]),
+                BeatSet.concat([ds1_sets[r] for r in v]))
+
+    members = [split_for(s_) for s_ in seeds]
+    val_names = val_by_seed[seeds[0]]
+    train_names = [r for r in sorted(ds1_sets) if r not in val_names]
+    train, val = members[0][1], members[0][2]
     test = BeatSet.concat([ds2_sets[r] for r in sorted(ds2_sets)])
     full_ds1 = BeatSet.concat([ds1_sets[r] for r in sorted(ds1_sets)])
     _log(f"Training: {len(train)} Beats ({len(train_names)} Records), Validierung: {len(val)} Beats "
-         f"({', '.join(val_names)}), Test DS2: {len(test)} Beats")
+         f"({', '.join(val_names)}), Test DS2: {len(test)} Beats, Seeds: {seeds}")
+
+    extra_tests = {}
+    detector = None
+    if eval_detected:
+        det_sets = prepare_splits(data_dir, cache_dir, use_reference_peaks=False, ds1=(), ds2=ds2)["DS2"]
+        if leads == 2:
+            det_sets, _ = with_lead2(det_sets, data_dir, cache_dir, use_reference_peaks=False)
+        extra_tests["detected_peaks"] = BeatSet.concat([det_sets[r] for r in sorted(det_sets)])
+        detector = detection_stats(data_dir, sorted(ds2_sets))
+        _log(f"Pan-Tompkins auf DS2: Se={detector['sensitivity']:.4f} PPV={detector['ppv']:.4f}")
 
     res = fit_and_evaluate(train, val, test, tree_train=full_ds1, epochs=epochs, patience=patience, lr=lr,
-                           batch_size=batch_size, seed=seed, max_depth=max_depth, features=features)
+                           batch_size=batch_size, seed=seeds[0], max_depth=max_depth, features=features,
+                           members=members if len(members) > 1 else None, weight_power=weight_power,
+                           augment=augment, offsets=offsets, extra_tests=extra_tests)
+    if "ensemble" in res["cnn"]:
+        res["cnn"]["ensemble"]["val_records"] = {str(s_): val_by_seed[s_] for s_ in seeds}
 
     per_split = {"DS1": _split_counts(ds1_sets), "DS2": _split_counts(ds2_sets)}
     metrics = {
@@ -926,8 +1018,11 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
         "records": {"train": train_names, "val": val_names, "test": sorted(ds2_sets)},
         "beats": {"train": len(train), "val": len(val), "test": len(test), "tree_train": len(full_ds1)},
         "per_split": per_split,
-        "config": {"epochs": epochs, "patience": patience, "lr": lr, "batch_size": batch_size, "seed": seed,
-                   "max_depth": max_depth, "use_reference_peaks": use_reference_peaks, "features": features,
+        "config": {"epochs": epochs, "patience": patience, "lr": lr, "batch_size": batch_size, "seed": seeds[0],
+                   "seeds": seeds, "max_depth": max_depth, "use_reference_peaks": use_reference_peaks,
+                   "features": features, "weight_power": weight_power, "augment": augment, "leads": leads,
+                   "lead2_names": lead_names, "max_class_share": max_class_share,
+                   "offsets": {c: float((offsets or {}).get(c, 0.0)) for c in CLASSES},
                    "pre_ms": PRE_MS, "post_ms": POST_MS, "validation": "record-wise hold-out inside DS1",
                    "preprocessing_fingerprint": preprocessing_fingerprint(),
                    "library_versions": library_versions()},
@@ -935,6 +1030,12 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
         "tree": res["tree_result"],
         "train_seconds": res["seconds"],
     }
+    if eval_detected:
+        d = res["extra"]["detected_peaks"]
+        metrics["detected_peaks"] = {"detector": detector, "beats": len(extra_tests["detected_peaks"]),
+                                     "cnn": d["cnn"], "tree": d["tree"]}
+    if cv_summary:
+        metrics["cv"] = cv_summary
     stats = {
         "schema_version": SCHEMA_VERSION,
         "status": "complete",
@@ -947,13 +1048,18 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
 
     out_dir.mkdir(parents=True, exist_ok=True)
     save_model(res["model"], out_dir / "model.pt")
+    if len(res["models"]) > 1:
+        for s_, m in zip(seeds, res["models"]):
+            save_model(m, out_dir / f"model_seed{s_}.pt")
+    _write_json(out_dir / "ensemble.json", {"seeds": seeds, "features": features, "leads": leads,
+                                            "offsets": metrics["config"]["offsets"]})
     for target in [out_dir / "web"] + ([Path(export_dir)] if export_dir else []):
         _write_json(target / "metrics.json", metrics)
         _write_json(target / "tree.json", res["tree_json"])
         _write_json(target / "dataset_stats.json", stats)
     s = metrics["cnn"]["summary"]
-    _log(f"Fertig: CNN macro-F1 (DS2) = {s['macro_f1']:.4f}, Baum macro-F1 (DS2) = "
-         f"{metrics['tree']['summary']['macro_f1']:.4f}; Modell: {out_dir / 'model.pt'}")
+    _log(f"Fertig: CNN macro-F1 (DS2) = {s['macro_f1']:.4f} (N/S/V/F {s['macro_f1_nsvf']:.4f}), Baum macro-F1 "
+         f"(DS2) = {metrics['tree']['summary']['macro_f1']:.4f}; Modell: {out_dir / 'model.pt'}")
     return metrics
 
 
@@ -1126,10 +1232,6 @@ def analyze_oof(report_path: str | Path) -> dict:
     fold_of = {r: i for i, f in enumerate(rep["folds"]) for r in f}
     fold = np.array([fold_of[r] for r in rec])
 
-    def compact(s: dict) -> dict:
-        return {"macro_f1_nsvf": s["macro_f1_nsvf"], "macro_f1": s["macro_f1"],
-                "per_class": {c: {m: s["per_class"][c][m] for m in ("sensitivity", "ppv", "f1")} for c in CLASSES}}
-
     singles = [summary(y, lg.argmax(axis=1), CLASSES)["macro_f1_nsvf"] for lg in logits]
     logp = ensemble_log_probs(logits)
     nested = np.empty_like(y)
@@ -1142,8 +1244,8 @@ def analyze_oof(report_path: str | Path) -> dict:
         "source": report_path.name,
         "n_seeds": len(logits),
         "single": {"mean": float(np.mean(singles)), "std": float(np.std(singles, ddof=1)) if len(singles) > 1 else 0.0},
-        "ensemble": compact(summary(y, logp.argmax(axis=1), CLASSES)),
-        "ensemble_offsets_nested": compact(summary(y, nested, CLASSES)),
+        "ensemble": _compact_summary(summary(y, logp.argmax(axis=1), CLASSES)),
+        "ensemble_offsets_nested": _compact_summary(summary(y, nested, CLASSES)),
         "offsets": {c: float(offsets[i]) for i, c in enumerate(CLASSES)},
     }
     _write_json(report_path.with_name(report_path.stem + "_analysis.json"), out)
@@ -1151,6 +1253,20 @@ def analyze_oof(report_path: str | Path) -> dict:
          f"Ensemble {out['ensemble']['macro_f1_nsvf']:.4f}, "
          f"Ensemble + Offsets (verschachtelt) {out['ensemble_offsets_nested']['macro_f1_nsvf']:.4f}, "
          f"Offsets {out['offsets']}")
+    return out
+
+
+def _cv_block(report_path: str | Path) -> dict:
+    """Compact CV result of the chosen configuration for metrics.json (plus OOF analysis if present)."""
+    p = Path(report_path)
+    rep = _read_json(p)
+    out = {"source": p.name, "k": rep["config"]["k"], "seeds": rep["config"]["seeds"],
+           "macro_f1_nsvf": rep["aggregate"]["macro_f1_nsvf"], "macro_f1": rep["aggregate"]["macro_f1"],
+           "per_class": rep["aggregate"]["per_class"]}
+    ana = _read_json(p.with_name(p.stem + "_analysis.json"))
+    if ana:
+        out["ensemble"] = ana["ensemble"]
+        out["ensemble_offsets_nested"] = ana["ensemble_offsets_nested"]
     return out
 
 
@@ -1256,6 +1372,14 @@ def _build_parser() -> argparse.ArgumentParser:
     t.add_argument("--max-depth", type=int, default=4)
     t.add_argument("--detected-peaks", action="store_true")
     t.add_argument("--features", choices=FEATURE_SETS, default="base", help="Zusatz-Eingaben des CNN")
+    t.add_argument("--seeds", type=int, nargs="+", default=None, help="Seed-Ensemble (eigene Validierung je Seed)")
+    t.add_argument("--max-class-share", type=float, default=0.4)
+    t.add_argument("--weight-power", type=float, default=1.0)
+    t.add_argument("--augment", action="store_true")
+    t.add_argument("--leads", type=int, choices=[1, 2], default=1)
+    t.add_argument("--offsets", default=None, help="*_analysis.json aus 'oof' (Klassen-Offsets)")
+    t.add_argument("--eval-detected", action="store_true", help="zusätzlich auf Pan-Tompkins-Schlägen in DS2")
+    t.add_argument("--cv-report", default=None, help="cv_*.json der gewählten Konfiguration (für metrics.cv)")
 
     c = sub.add_parser("cv", help="Record-gruppierte Kreuzvalidierung des CNN nur auf DS1")
     c.add_argument("--data-dir", default="data/mitdb")
@@ -1304,7 +1428,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_train(args.data_dir, args.out, args.export or None, cache_dir=args.cache, epochs=args.epochs,
                       patience=args.patience or None, lr=args.lr, batch_size=args.batch_size, seed=args.seed,
                       n_val=args.n_val, val_records=args.val_records, max_depth=args.max_depth,
-                      use_reference_peaks=not args.detected_peaks, features=args.features)
+                      use_reference_peaks=not args.detected_peaks, features=args.features, seeds=args.seeds,
+                      max_class_share=args.max_class_share, weight_power=args.weight_power, augment=args.augment,
+                      leads=args.leads, eval_detected=args.eval_detected,
+                      offsets=_read_json(Path(args.offsets))["offsets"] if args.offsets else None,
+                      cv_summary=_cv_block(args.cv_report) if args.cv_report else None)
         elif args.cmd == "cv":
             run_cv(args.data_dir, args.out, cache_dir=args.cache, features=args.features, k=args.folds,
                    seeds=args.seeds, epochs=args.epochs, patience=args.patience or None, n_val=args.n_val,
