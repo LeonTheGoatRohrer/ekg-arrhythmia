@@ -2,7 +2,7 @@
   "project": "EKG-Arrhythmie-Erkennung (MIT-BIH, AAMI EC57)",
   "version": 1,
   "created_at": "2026-11-01T21:42:46+00:00",
-  "updated_at": "2026-11-02T12:04:18+00:00",
+  "updated_at": "2026-11-03T12:30:00+00:00",
   "orchestrator": {
     "name": "mother-agent",
     "max_parallel_agents": 16
@@ -1031,9 +1031,260 @@
           "event": "done"
         }
       ],
-      "last_error": "physionet.org nicht erreichbar (Netzwerk-Policy der Umgebung). Freischalten, dann `make data && make train`.",
       "started_at": "2026-11-02T11:24:39+00:00",
       "finished_at": "2026-11-02T12:04:18+00:00"
+    },
+    {
+      "id": "review-plan",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "Projekt-Review und Fahrplan bis zur Veröffentlichung",
+      "status": "done",
+      "agent": "mother-agent",
+      "owns": [
+        "docs/PLAN.md",
+        "docs/EXPERIMENTS.md"
+      ],
+      "depends_on": [
+        "full-training"
+      ],
+      "summary": "Review des Gesamtstands: README veraltet, DS2 zweimal ausgewertet, Training instabil (beste Epoche 1–14), Auswertung nur mit Experten-R-Zacken, Repo privat. Daraus Fahrplan in Phasen A (Modell) bis E (LinkedIn) mit Prüfkriterium je Aufgabe; Modellphase zuerst, DS2 bis zur finalen Auswertung gesperrt.",
+      "decisions": [
+        "Mensch: erst alle Modellverbesserungen, dann Veröffentlichung; zweisprachig, Deutsch Standard",
+        "Entscheidungen nur per 5-fach-CV auf DS1 (3 Seeds) mit vorab notiertem Kriterium",
+        "Nach dem Start der Phasen B–E arbeiten vier Sessions parallel auf eigenen Branches, die Haupt-Session merged"
+      ],
+      "files": [
+        "docs/PLAN.md",
+        "docs/EXPERIMENTS.md"
+      ],
+      "tests": [],
+      "history": [
+        {
+          "t": "2026-11-02T22:00:00+00:00",
+          "agent": "mother-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-02T22:29:01+00:00",
+          "agent": "mother-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:00:00+00:00",
+      "finished_at": "2026-11-02T22:29:01+00:00"
+    },
+    {
+      "id": "model-improvement",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "Modellphase A1–A8: CV-Experimente, finale DS2-Auswertung, externer Test",
+      "status": "done",
+      "agent": "mother-agent",
+      "owns": [
+        "src/ekg/pipeline.py",
+        "src/ekg/training/train.py",
+        "src/ekg/models/cnn1d.py",
+        "src/ekg/preprocessing/segmentation.py",
+        "docs/EXPERIMENTS.md",
+        "web/public/data/metrics.json"
+      ],
+      "depends_on": [
+        "review-plan"
+      ],
+      "summary": "Acht Experimente nur auf DS1: feste Epochen, Augmentierung, weichere Klassengewichte, zweite Ableitung, Klassen-Offsets verworfen; patientenrelative Merkmale und Seed-Ensemble angenommen. Finale Konfiguration vor der Auswertung committet (72b1cab), DS2 einmalig ausgewertet: macro-F1 (N/S/V/F) 0,592, V Se 97,2 %, S Se/PPV 66,1/43,0 %; Ende-zu-Ende mit Pan-Tompkins 0,585 (Detektor Se 99,39 %, PPV 99,79 %). Externer Test auf der MIT-BIH Supraventricular DB ohne Nachtraining: macro-F1 (N/S/V/F) 0,564.",
+      "decisions": [
+        "Klassen-Offsets verschachtelt geprüft (auf 4 Folds gelernt, am 5. getestet): schaden -> verworfen",
+        "Auswahlregel nach der ersten CV-Runde festgelegt; unter der älteren Regel wäre patient knapp gescheitert (offen dokumentiert)",
+        "CV-Läufe als eigenständige Prozesse gestartet, nachdem ein Sitzungsabbruch laufende Rechnungen beendet hatte"
+      ],
+      "files": [
+        "docs/EXPERIMENTS.md",
+        "src/ekg/pipeline.py",
+        "src/ekg/training/train.py",
+        "src/ekg/models/cnn1d.py",
+        "web/public/data/metrics.json",
+        "web/public/data/architecture.json"
+      ],
+      "tests": [
+        "pytest -q: alle Tests grün",
+        "python -m ekg.pipeline cv/oof/train/external: exit 0"
+      ],
+      "history": [
+        {
+          "t": "2026-11-02T22:29:01+00:00",
+          "agent": "mother-agent",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-03T12:07:21+00:00",
+          "agent": "mother-agent",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:29:01+00:00",
+      "finished_at": "2026-11-03T12:07:21+00:00"
+    },
+    {
+      "id": "repo-hygiene",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "Privatsphäre-Scan, Lizenzen, GitHub-Metadaten",
+      "status": "done",
+      "agent": "session repo-hygiene",
+      "owns": [
+        "LICENSE",
+        "DATA_LICENSE.md",
+        "pyproject.toml",
+        ".gitignore"
+      ],
+      "depends_on": [
+        "review-plan"
+      ],
+      "summary": "gitleaks + manueller Scan der gesamten Historie: keine Secrets. egg-info und internes Setup-Dokument entfernt, MIT-Lizenz, Datenlizenz (ODC-By 1.0) für Record 100, Projekt-Metadaten, GitHub-Beschreibung, Topics und HTTPS für Pages.",
+      "decisions": [
+        "Alte Commit-Historie bleibt unverändert (kein Force-Push), neue Commits mit noreply-Adresse"
+      ],
+      "files": [
+        "LICENSE",
+        "DATA_LICENSE.md",
+        "pyproject.toml",
+        ".gitignore"
+      ],
+      "tests": [
+        "pytest -q: 213 passed, 1 skipped"
+      ],
+      "history": [
+        {
+          "t": "2026-11-02T22:30:00+00:00",
+          "agent": "session repo-hygiene",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-02T22:40:07+00:00",
+          "agent": "session repo-hygiene",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:30:00+00:00",
+      "finished_at": "2026-11-02T22:40:07+00:00"
+    },
+    {
+      "id": "web-ui-final",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "Web-UI: Deutsch als Standard, Agenten-Geschichte, finale Ergebnisfelder",
+      "status": "done",
+      "agent": "session web-ui",
+      "owns": [
+        "web/src/"
+      ],
+      "depends_on": [
+        "review-plan"
+      ],
+      "summary": "Deutsch als Standardsprache, veraltete Texte korrigiert, Status-Seite als „Wie es gebaut wurde“ mit Einleitung, Mermaid-Fehler bei reduzierter Bewegung behoben (Ursache: Transition 0.01ms), Modelle-Seite zeigt Ensemble, CV, Ende-zu-Ende und externen Test aus metrics.json.",
+      "decisions": [
+        "Keine Modellzahlen hart im Text; Wertungen hängen an den Zahlen"
+      ],
+      "files": [
+        "web/src/lib/i18n.js",
+        "web/src/views/status.js",
+        "web/src/views/models.js",
+        "web/src/style.css"
+      ],
+      "tests": [
+        "vite build (+ VITE_STATIC_SITE=1): ok",
+        "Browser: Desktop/Handy, hell/dunkel, DE/EN: 0 Konsolenfehler"
+      ],
+      "history": [
+        {
+          "t": "2026-11-02T22:30:00+00:00",
+          "agent": "session web-ui",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-03T11:09:09+00:00",
+          "agent": "session web-ui",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:30:00+00:00",
+      "finished_at": "2026-11-03T11:09:09+00:00"
+    },
+    {
+      "id": "report-pdf",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "Englischer PDF-Projektbericht mit QR-Code",
+      "status": "done",
+      "agent": "session report-pdf",
+      "owns": [
+        "docs/report/"
+      ],
+      "depends_on": [
+        "review-plan"
+      ],
+      "summary": "14-seitiger Bericht, per Skript aus den JSON-Exporten erzeugt (Grafiken aus echten Daten, Ergebnisse, Literaturvergleich, Grenzen, Agenten-Workflow, QR-Code zur Live-Seite).",
+      "decisions": [
+        "Alle Zahlen werden beim Bauen aus web/public/data gelesen, nichts hart codiert"
+      ],
+      "files": [
+        "docs/report/build_report.py",
+        "docs/report/ekg-arrhythmia-report.pdf"
+      ],
+      "tests": [
+        "61/61 Stichproben gegen die JSONs korrekt",
+        "QR-Code dekodiert auf die Live-Seite"
+      ],
+      "history": [
+        {
+          "t": "2026-11-02T22:30:00+00:00",
+          "agent": "session report-pdf",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-03T12:10:01+00:00",
+          "agent": "session report-pdf",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:30:00+00:00",
+      "finished_at": "2026-11-03T12:10:01+00:00"
+    },
+    {
+      "id": "docs-texts",
+      "block": "B6 Review & Veröffentlichung",
+      "title": "README (DE/EN) und LinkedIn-Texte",
+      "status": "done",
+      "agent": "session docs-texts",
+      "owns": [
+        "README.md",
+        "README.en.md",
+        "docs/linkedin/"
+      ],
+      "depends_on": [
+        "review-plan"
+      ],
+      "summary": "README neu auf Deutsch und Englisch (Ergebnisse, Literaturvergleich, Grenzen, Methodik-Transparenz, Agenten-Workflow), LinkedIn-Projekteintrag und Post auf Englisch.",
+      "decisions": [
+        "Alle Modellzahlen in markierten Blöcken, nach der finalen Auswertung ersetzt"
+      ],
+      "files": [
+        "README.md",
+        "README.en.md",
+        "docs/linkedin/project-entry.md",
+        "docs/linkedin/post.md"
+      ],
+      "tests": [],
+      "history": [
+        {
+          "t": "2026-11-02T22:30:00+00:00",
+          "agent": "session docs-texts",
+          "event": "start"
+        },
+        {
+          "t": "2026-11-03T12:30:00+00:00",
+          "agent": "session docs-texts",
+          "event": "done"
+        }
+      ],
+      "started_at": "2026-11-02T22:30:00+00:00",
+      "finished_at": "2026-11-03T12:30:00+00:00"
     }
   ]
 }
