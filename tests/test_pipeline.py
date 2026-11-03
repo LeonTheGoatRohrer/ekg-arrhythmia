@@ -364,3 +364,16 @@ def test_cv_without_validation_reports_epoch_snapshots(tmp_path):
         assert set(z.files) == {"y_true", "record", "logits_seed0", "logits_seed1"}
         assert z["logits_seed0"].shape == (z["y_true"].size, 5)
         assert (z["logits_seed1"].argmax(1) >= 0).all()
+
+
+def test_cv_with_second_lead(tmp_path):
+    names = ["901", "902", "903", "904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, names)
+    rep = pipeline.run_cv(data, tmp_path / "cv", cache_dir=tmp_path / "beats", k=2, seeds=[0], epochs=1,
+                          patience=None, n_val=1, max_class_share=None, ds1=names, leads=2, tag="l2")
+    assert rep["config"]["lead2_names"] == {n: "V5" for n in names}
+    assert (tmp_path / "beats" / "901_ref_lead2.npz").exists()
+    sets = pipeline.prepare_splits(data, tmp_path / "beats", ds1=names[:1], ds2=())["DS1"]
+    again, _ = pipeline.with_lead2(sets, data, tmp_path / "beats")  # from cache
+    assert again["901"].beats2.shape == sets["901"].beats.shape

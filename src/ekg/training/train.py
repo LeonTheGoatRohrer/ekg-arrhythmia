@@ -71,7 +71,8 @@ CHECKPOINT_VERSION = 1
 class BeatTorchDataset(Dataset):
     """Wrap a :class:`BeatSet` as a torch Dataset yielding ``(beat, rr, label)``.
 
-    ``beat`` is a float32 tensor (L,), ``rr`` float32 (4,), ``label`` int64 scalar.
+    ``beat`` is a float32 tensor (L,), or (2, L) if the BeatSet carries a second lead
+    (``beats2``); ``rr`` float32 (n_rr,), ``label`` int64 scalar.
     The full arrays are also exposed as tensors (``beats``, ``rr``, ``labels``) so the
     training loop can slice mini-batches without per-sample collation overhead.
     """
@@ -82,6 +83,8 @@ class BeatTorchDataset(Dataset):
         labels = np.asarray(data.labels, dtype=np.int64)
         if beats.ndim != 2:
             raise ValueError(f"beats must be 2-D (n, L), got shape {beats.shape}")
+        if data.beats2 is not None:
+            beats = np.stack([beats, np.asarray(data.beats2, dtype=np.float32)], axis=1)
         n = beats.shape[0]
         if rr.shape[0] != n or labels.shape[0] != n:
             raise ValueError(
@@ -157,13 +160,17 @@ AUG_SHIFT = 3        # circular time shift in samples, drawn from [-k, k]
 
 
 def _augment(xb: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
-    """Random amplitude scaling, additive noise and a small time shift per beat (B, L)."""
-    n, length = xb.shape
-    scale = 1.0 + AUG_SCALE * (2.0 * torch.rand(n, 1, generator=gen) - 1.0)
-    noise = AUG_NOISE * torch.randn(n, length, generator=gen)
-    shift = torch.randint(-AUG_SHIFT, AUG_SHIFT + 1, (n, 1), generator=gen)
-    idx = (torch.arange(length).unsqueeze(0) - shift) % length
-    return torch.gather(xb * scale + noise, 1, idx)
+    """Random amplitude scaling, additive noise and a small time shift per beat.
+
+    Works on (B, L) and (B, C, L); all leads of a beat share scale and shift.
+    """
+    n, length = xb.shape[0], xb.shape[-1]
+    lead_dims = (1,) * (xb.dim() - 1)
+    scale = 1.0 + AUG_SCALE * (2.0 * torch.rand(n, *lead_dims, generator=gen) - 1.0)
+    noise = AUG_NOISE * torch.randn(xb.shape, generator=gen)
+    shift = torch.randint(-AUG_SHIFT, AUG_SHIFT + 1, (n, *lead_dims), generator=gen)
+    idx = (torch.arange(length) - shift) % length
+    return torch.gather(xb * scale + noise, -1, idx.expand(xb.shape))
 
 
 @torch.no_grad()
@@ -265,7 +272,7 @@ def train_cnn(
     dev = torch.device(device)
 
     kwargs: dict[str, Any] = {"n_classes": len(CLASSES), "in_len": int(train.beats.shape[1]),
-                              "n_rr": int(train.rr.shape[1])}
+                              "n_rr": int(train.rr.shape[1]), "in_channels": 2 if train.beats2 is not None else 1}
     kwargs.update(model_kwargs or {})
     n_classes = int(kwargs["n_classes"])
     _check_labels(train, n_classes, "train")
@@ -274,6 +281,8 @@ def train_cnn(
         _check_labels(val, n_classes, "val")
         if val.beats.shape[1] != train.beats.shape[1]:
             raise ValueError("train and val beats have different window lengths")
+        if (val.beats2 is None) != (train.beats2 is None):
+            raise ValueError("train and val must both have (or both lack) a second lead")
 
     model = ECGNet1D(**kwargs).to(dev)
     weight = class_weights(train.labels, n_classes, power=weight_power).to(dev)
@@ -396,6 +405,7 @@ def _model_config(model: ECGNet1D) -> dict[str, Any]:
         "channels": [int(c) for c in model.channels],
         "kernel_sizes": [int(k) for k in model.kernel_sizes],
         "dropout": float(model.dropout_p),
+        "in_channels": int(model.in_channels),
     }
 
 

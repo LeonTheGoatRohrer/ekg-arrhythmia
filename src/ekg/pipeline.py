@@ -78,6 +78,7 @@ from ekg.preprocessing.segmentation import (
     build_beat_dataset,
     segment_beats,
     window_samples,
+    znormalize,
 )
 
 __all__ = [
@@ -643,6 +644,55 @@ def load_or_build_beats(name: str, data_dir: str | Path, cache_dir: str | Path |
     return bs, False
 
 
+def load_or_build_lead2(bs: BeatSet, name: str, data_dir: str | Path, cache_dir: str | Path | None,
+                        use_reference_peaks: bool = True) -> tuple[np.ndarray, str]:
+    """Second-lead beat windows at the R peaks of ``bs`` (one record), z-normalised.
+
+    The second lead is the first channel that :func:`load_record` does not use (MLII),
+    i.e. mostly V1 in MIT-BIH (V2/V4/V5 in a few records). It gets the same
+    preprocessing and window as lead 1. Returns ``(beats2, lead_name)``; cached as
+    ``<name>_<ref|det>_lead2.npz`` next to the lead-1 cache.
+    """
+    import wfdb
+
+    data_dir = Path(data_dir)
+    meta = {**_cache_meta(data_dir, name, use_reference_peaks), "lead2": 1, "n": len(bs)}
+    path = None
+    if cache_dir is not None:
+        path = Path(cache_dir) / f"{name}_{'ref' if use_reference_peaks else 'det'}_lead2.npz"
+        if path.exists():
+            try:
+                with np.load(path, allow_pickle=False) as z:
+                    if json.loads(str(z["meta"])) == meta:
+                        return z["beats2"].astype(np.float32, copy=False), str(z["lead"])
+            except (OSError, ValueError, KeyError):
+                pass
+    rec = wfdb.rdrecord(str(data_dir / name))
+    used = load_record(name, data_dir).lead
+    names = list(rec.sig_name or [])
+    ch = next(i for i, n in enumerate(names) if n != used)
+    x = preprocess(np.asarray(rec.p_signal[:, ch], dtype=np.float32), float(rec.fs))
+    pre, post = window_samples(rec.fs)
+    beats2 = znormalize(np.stack([x[r - pre:r + post] for r in bs.r_sample]) if len(bs)
+                        else np.empty((0, pre + post), dtype=np.float32)).astype(np.float32)
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp.npz")
+        np.savez(tmp, beats2=beats2, lead=np.asarray(names[ch]), meta=np.asarray(json.dumps(meta)))
+        os.replace(tmp, path)
+    return beats2, names[ch]
+
+
+def with_lead2(sets: dict[str, BeatSet], data_dir: str | Path, cache_dir: str | Path | None,
+               use_reference_peaks: bool = True) -> tuple[dict[str, BeatSet], dict[str, str]]:
+    """Attach the second lead (``beats2``) to every per-record BeatSet; also returns the lead names."""
+    out, leads = {}, {}
+    for name, bs in sets.items():
+        b2, leads[name] = load_or_build_lead2(bs, name, data_dir, cache_dir, use_reference_peaks)
+        out[name] = dataclasses.replace(bs, beats2=b2)
+    return out, leads
+
+
 def prepare_splits(data_dir: str | Path, cache_dir: str | Path | None = None, *,
                    use_reference_peaks: bool = True, ds1: Sequence[str] = DS1,
                    ds2: Sequence[str] = DS2) -> dict[str, dict[str, BeatSet]]:
@@ -912,7 +962,7 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
            patience: int | None = 5, lr: float = 1e-3, batch_size: int = 256, n_val: int = 3,
            max_class_share: float | None = 0.4, use_reference_peaks: bool = True,
            ds1: Sequence[str] = DS1, lr_schedule: str | None = None, augment: bool = False,
-           eval_epochs: Sequence[int] = (), tag: str = "", weight_power: float = 1.0) -> dict:
+           eval_epochs: Sequence[int] = (), tag: str = "", weight_power: float = 1.0, leads: int = 1) -> dict:
     """Record-grouped k-fold CV of the CNN on DS1 only (DS2 is never loaded).
 
     Per seed, the out-of-fold predictions of all folds are pooled into one summary;
@@ -930,6 +980,9 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
 
     with_features(BeatSet.empty(), features)  # validate the name before the expensive part
     sets = prepare_splits(data_dir, cache_dir, use_reference_peaks=use_reference_peaks, ds1=ds1, ds2=())["DS1"]
+    lead_names: dict[str, str] = {}
+    if leads == 2:
+        sets, lead_names = with_lead2(sets, data_dir, cache_dir, use_reference_peaks)
     labels = {r: bs.labels for r, bs in sets.items()}
     folds = cv_folds(labels, k)
     eval_epochs = sorted({int(e) for e in eval_epochs if 1 <= int(e) <= epochs})
@@ -994,7 +1047,8 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
         "config": {"k": k, "seeds": [int(s) for s in seeds], "epochs": epochs, "patience": patience, "lr": lr,
                    "batch_size": batch_size, "n_val": n_val, "max_class_share": max_class_share,
                    "use_reference_peaks": use_reference_peaks, "lr_schedule": lr_schedule, "augment": augment,
-                   "eval_epochs": eval_epochs, "weight_power": weight_power,
+                   "eval_epochs": eval_epochs, "weight_power": weight_power, "leads": leads,
+                   "lead2_names": lead_names,
                    "preprocessing_fingerprint": preprocessing_fingerprint(),
                    "library_versions": library_versions()},
         "aggregate": aggregate,
@@ -1134,6 +1188,7 @@ def _build_parser() -> argparse.ArgumentParser:
     c.add_argument("--tag", default="", help="Namenszusatz der Ausgabedatei")
     c.add_argument("--weight-power", type=float, default=1.0,
                    help="Exponent der Klassengewichte (1 = invers, 0.5 = Wurzel)")
+    c.add_argument("--leads", type=int, choices=[1, 2], default=1, help="2 = zweite Ableitung als CNN-Kanal")
 
     s = sub.add_parser("smoke", help="Mechanik-Test auf Record 100, 1 Epoche, nur artifacts/smoke/")
     s.add_argument("--record", default="data/sample/100")
@@ -1164,7 +1219,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                    seeds=args.seeds, epochs=args.epochs, patience=args.patience or None, n_val=args.n_val,
                    max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks,
                    lr_schedule=args.lr_schedule, augment=args.augment, eval_epochs=args.eval_epochs, tag=args.tag,
-                   weight_power=args.weight_power)
+                   weight_power=args.weight_power, leads=args.leads)
         elif args.cmd == "smoke":
             rep = run_smoke(args.record, args.out, epochs=args.epochs)
             return 0 if rep["ok"] else 1

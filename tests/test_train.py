@@ -235,3 +235,20 @@ def test_class_weights_power():
     np.testing.assert_allclose(soft[2] / soft[0], np.sqrt(full[2] / full[0]), rtol=1e-6)
     np.testing.assert_allclose(class_weights(y, 3, power=0.0).numpy(), [1.0, 1.0, 1.0])
     np.testing.assert_allclose(class_weights(y, 3, power=1.0).numpy(), class_weights(y, 3).numpy())
+
+
+def test_second_lead_training_and_roundtrip(tmp_path):
+    import dataclasses
+    data = _synthetic((30, 15, 15))
+    two = dataclasses.replace(data, beats2=data.beats[:, ::-1].copy())
+    assert BeatTorchDataset(two).beats.shape == (len(two), 2, L)
+    model, _ = train_cnn(two, None, epochs=1, seed=0, augment=True)
+    assert model.in_channels == 2
+    path = save_model(model, tmp_path / "m2.pt")
+    np.testing.assert_allclose(predict_logits(load_model(path), two), predict_logits(model, two), rtol=1e-6)
+    both = BeatSet.concat([two, two])
+    assert both.beats2.shape == (2 * len(two), L)
+    with pytest.raises(ValueError):
+        BeatSet.concat([two, data])
+    with pytest.raises(ValueError):
+        train_cnn(two, data, epochs=1)

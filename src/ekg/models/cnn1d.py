@@ -2,7 +2,7 @@
 
 Architecture (default configuration, L = 252 samples @ 360 Hz):
 
-    beat (B, 1, L)
+    beat (B, C, L)   C = in_channels (ECG leads, default 1)
       -> 3 x [Conv1d(k, padding="same") -> BatchNorm1d -> ReLU -> MaxPool1d(2)]
          channels (16, 32, 64), kernel sizes (7, 5, 3)
       -> AdaptiveAvgPool1d(1) -> Flatten                       (B, 64)
@@ -68,6 +68,7 @@ class ECGNet1D(nn.Module):
         channels: tuple[int, ...] = (16, 32, 64),
         kernel_sizes: tuple[int, ...] = (7, 5, 3),
         dropout: float = 0.3,
+        in_channels: int = 1,
     ) -> None:
         super().__init__()
         if len(channels) != len(kernel_sizes):
@@ -84,9 +85,10 @@ class ECGNet1D(nn.Module):
         self.channels = tuple(int(c) for c in channels)
         self.kernel_sizes = tuple(int(k) for k in kernel_sizes)
         self.dropout_p = float(dropout)
+        self.in_channels = int(in_channels)
 
         blocks: list[tuple[str, nn.Module]] = []
-        in_ch = 1
+        in_ch = self.in_channels
         for i, (out_ch, k) in enumerate(zip(self.channels, self.kernel_sizes), start=1):
             blocks += [
                 (f"conv{i}", nn.Conv1d(in_ch, out_ch, kernel_size=k, padding="same")),
@@ -128,11 +130,15 @@ class ECGNet1D(nn.Module):
         )
 
     def forward(self, beats: torch.Tensor, rr: torch.Tensor | None = None) -> torch.Tensor:
-        """Return logits (B, n_classes) for beats (B, L) or (B, 1, L) and rr (B, n_rr) or None."""
-        if beats.dim() == 2:
+        """Return logits (B, n_classes) for beats (B, L) or (B, C, L) and rr (B, n_rr) or None.
+
+        ``C`` is ``in_channels`` (number of ECG leads); (B, L) is accepted for one lead.
+        """
+        if beats.dim() == 2 and self.in_channels == 1:
             beats = beats.unsqueeze(1)
-        elif beats.dim() != 3 or beats.shape[1] != 1:
-            raise ValueError(f"beats must have shape (B, L) or (B, 1, L), got {tuple(beats.shape)}")
+        elif beats.dim() != 3 or beats.shape[1] != self.in_channels:
+            raise ValueError(f"beats must have shape (B, {self.in_channels}, L)"
+                             f"{' or (B, L)' if self.in_channels == 1 else ''}, got {tuple(beats.shape)}")
         beats = beats.float()
         z = self.features(beats)
 
@@ -200,6 +206,7 @@ def describe_architecture(model: ECGNet1D, in_len: int | None = 252) -> list[dic
         in_len = getattr(model, "in_len", 252)
     in_len = int(in_len)
     n_rr = int(getattr(model, "n_rr", 4))
+    n_in = int(getattr(model, "in_channels", 1))
 
     try:
         param = next(model.parameters())
@@ -232,9 +239,9 @@ def describe_architecture(model: ECGNet1D, in_len: int | None = 252) -> list[dic
         {
             "name": "input",
             "type": "Input",
-            "output_shape": [1, 1, in_len],
+            "output_shape": [1, n_in, in_len],
             "params": 0,
-            "detail": f"beat window, {in_len} samples",
+            "detail": f"beat window, {in_len} samples" + (f", {n_in} leads" if n_in > 1 else ""),
         }
     ]
     has_rr = getattr(model, "rr_branch", None) is not None
@@ -253,7 +260,7 @@ def describe_architecture(model: ECGNet1D, in_len: int | None = 252) -> list[dic
     model.eval()
     try:
         with torch.no_grad():
-            x = torch.zeros(1, 1, in_len, device=device, dtype=dtype)
+            x = torch.zeros(1, n_in, in_len, device=device, dtype=dtype)
             rr = torch.zeros(1, n_rr, device=device, dtype=dtype) if has_rr else None
             model(x, rr)
     finally:
