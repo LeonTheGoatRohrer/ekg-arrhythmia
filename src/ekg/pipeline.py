@@ -1066,6 +1066,94 @@ def run_cv(data_dir: str | Path, out_dir: str | Path, *, cache_dir: str | Path |
     return report
 
 
+OFFSET_GRID = np.round(np.arange(-3.0, 3.01, 0.25), 2)
+TUNED_CLASSES = ("S", "V", "F")  # N is the reference (offset 0); Q is too rare to tune
+
+
+def log_softmax(logits: np.ndarray) -> np.ndarray:
+    z = np.asarray(logits, dtype=np.float64)
+    z = z - z.max(axis=1, keepdims=True)
+    return z - np.log(np.exp(z).sum(axis=1, keepdims=True))
+
+
+def ensemble_log_probs(logits_per_model: Sequence[np.ndarray]) -> np.ndarray:
+    """log of the mean softmax probability over models (seed ensemble)."""
+    p = np.mean([np.exp(log_softmax(lg)) for lg in logits_per_model], axis=0)
+    return np.log(np.maximum(p, 1e-12))
+
+
+def fit_class_offsets(logp: np.ndarray, y: np.ndarray, rounds: int = 2) -> np.ndarray:
+    """Additive per-class log-probability offsets that maximise macro-F1 over N/S/V/F.
+
+    Coordinate ascent over ``OFFSET_GRID`` for the classes in ``TUNED_CLASSES``; the
+    prediction becomes ``argmax(logp + offsets)``. Fit only on DS1 out-of-fold data.
+    """
+    from ekg.evaluation.metrics import summary
+
+    def score(b: np.ndarray) -> float:
+        return summary(y, (logp + b).argmax(axis=1), CLASSES)["macro_f1_nsvf"]
+
+    b = np.zeros(logp.shape[1])
+    best = score(b)
+    for _ in range(rounds):
+        for c in TUNED_CLASSES:
+            i = CLASSES.index(c)
+            for v in OFFSET_GRID:
+                trial = b.copy()
+                trial[i] = v
+                s = score(trial)
+                if s > best + 1e-12:
+                    best, b = s, trial
+    return b
+
+
+def analyze_oof(report_path: str | Path) -> dict:
+    """A5/A6 on saved CV out-of-fold logits: seed ensemble and class offsets.
+
+    * ``single``: mean ± std over seeds of the plain argmax predictions (as in the CV report)
+    * ``ensemble``: mean softmax over seeds, argmax
+    * ``ensemble_offsets_nested``: offsets fitted on the other folds, applied to each fold
+      (honest estimate of what calibration adds)
+    * ``offsets``: offsets fitted on all out-of-fold data (to use for the final model)
+    """
+    from ekg.evaluation.metrics import summary
+
+    report_path = Path(report_path)
+    rep = _read_json(report_path)
+    with np.load(report_path.with_name(report_path.stem + "_oof.npz")) as z:
+        y, rec = z["y_true"], z["record"].astype(str)
+        logits = [z[k] for k in sorted(z.files) if k.startswith("logits_seed")]
+    fold_of = {r: i for i, f in enumerate(rep["folds"]) for r in f}
+    fold = np.array([fold_of[r] for r in rec])
+
+    def compact(s: dict) -> dict:
+        return {"macro_f1_nsvf": s["macro_f1_nsvf"], "macro_f1": s["macro_f1"],
+                "per_class": {c: {m: s["per_class"][c][m] for m in ("sensitivity", "ppv", "f1")} for c in CLASSES}}
+
+    singles = [summary(y, lg.argmax(axis=1), CLASSES)["macro_f1_nsvf"] for lg in logits]
+    logp = ensemble_log_probs(logits)
+    nested = np.empty_like(y)
+    for f in np.unique(fold):
+        m = fold == f
+        b = fit_class_offsets(logp[~m], y[~m])
+        nested[m] = (logp[m] + b).argmax(axis=1)
+    offsets = fit_class_offsets(logp, y)
+    out = {
+        "source": report_path.name,
+        "n_seeds": len(logits),
+        "single": {"mean": float(np.mean(singles)), "std": float(np.std(singles, ddof=1)) if len(singles) > 1 else 0.0},
+        "ensemble": compact(summary(y, logp.argmax(axis=1), CLASSES)),
+        "ensemble_offsets_nested": compact(summary(y, nested, CLASSES)),
+        "offsets": {c: float(offsets[i]) for i, c in enumerate(CLASSES)},
+    }
+    _write_json(report_path.with_name(report_path.stem + "_analysis.json"), out)
+    _log(f"OOF {report_path.stem}: einzeln {out['single']['mean']:.4f} ± {out['single']['std']:.4f}, "
+         f"Ensemble {out['ensemble']['macro_f1_nsvf']:.4f}, "
+         f"Ensemble + Offsets (verschachtelt) {out['ensemble_offsets_nested']['macro_f1_nsvf']:.4f}, "
+         f"Offsets {out['offsets']}")
+    return out
+
+
 def run_smoke(record_path: str | Path = "data/sample/100", out_dir: str | Path = "artifacts/smoke", *,
               epochs: int = 1, seed: int = 0) -> dict:
     """End-to-end mechanics check on a single record. Writes only to ``out_dir`` (never web/)."""
@@ -1190,6 +1278,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Exponent der Klassengewichte (1 = invers, 0.5 = Wurzel)")
     c.add_argument("--leads", type=int, choices=[1, 2], default=1, help="2 = zweite Ableitung als CNN-Kanal")
 
+    o = sub.add_parser("oof", help="Ensemble und Klassen-Offsets aus gespeicherten CV-Vorhersagen (A5/A6)")
+    o.add_argument("reports", nargs="+", help="cv_*.json (daneben muss *_oof.npz liegen)")
+
     s = sub.add_parser("smoke", help="Mechanik-Test auf Record 100, 1 Epoche, nur artifacts/smoke/")
     s.add_argument("--record", default="data/sample/100")
     s.add_argument("--out", default="artifacts/smoke")
@@ -1220,6 +1311,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                    max_class_share=args.max_class_share, use_reference_peaks=not args.detected_peaks,
                    lr_schedule=args.lr_schedule, augment=args.augment, eval_epochs=args.eval_epochs, tag=args.tag,
                    weight_power=args.weight_power, leads=args.leads)
+        elif args.cmd == "oof":
+            for r in args.reports:
+                analyze_oof(r)
         elif args.cmd == "smoke":
             rep = run_smoke(args.record, args.out, epochs=args.epochs)
             return 0 if rep["ok"] else 1

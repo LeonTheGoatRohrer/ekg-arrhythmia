@@ -364,6 +364,10 @@ def test_cv_without_validation_reports_epoch_snapshots(tmp_path):
         assert set(z.files) == {"y_true", "record", "logits_seed0", "logits_seed1"}
         assert z["logits_seed0"].shape == (z["y_true"].size, 5)
         assert (z["logits_seed1"].argmax(1) >= 0).all()
+    ana = pipeline.analyze_oof(tmp_path / "cv" / "cv_base_fixed.json")
+    assert ana["n_seeds"] == 2 and set(ana["offsets"]) == set(pipeline.CLASSES)
+    assert ana["offsets"]["N"] == 0.0 and ana["offsets"]["Q"] == 0.0
+    assert (tmp_path / "cv" / "cv_base_fixed_analysis.json").exists()
 
 
 def test_cv_with_second_lead(tmp_path):
@@ -377,3 +381,19 @@ def test_cv_with_second_lead(tmp_path):
     sets = pipeline.prepare_splits(data, tmp_path / "beats", ds1=names[:1], ds2=())["DS1"]
     again, _ = pipeline.with_lead2(sets, data, tmp_path / "beats")  # from cache
     assert again["901"].beats2.shape == sets["901"].beats.shape
+
+
+def test_fit_class_offsets_recovers_shifted_class():
+    rng = np.random.default_rng(0)
+    y = rng.choice(5, size=3000, p=[0.8, 0.1, 0.08, 0.01, 0.01])
+    logits = rng.normal(0, 1, (y.size, 5))
+    logits[np.arange(y.size), y] += 2.5
+    logits[:, 1] -= 2.0  # S is systematically under-predicted
+    logp = pipeline.log_softmax(logits)
+    b = pipeline.fit_class_offsets(logp, y)
+    from ekg.evaluation.metrics import summary
+    before = summary(y, logp.argmax(1), pipeline.CLASSES)["macro_f1_nsvf"]
+    after = summary(y, (logp + b).argmax(1), pipeline.CLASSES)["macro_f1_nsvf"]
+    assert b[1] > 1.0 and after > before
+    ens = pipeline.ensemble_log_probs([logits, logits])
+    np.testing.assert_allclose(ens, logp, atol=1e-9)
