@@ -120,3 +120,14 @@ def test_describe_does_not_change_state(model):
     before = model(x).detach().clone()
     describe_architecture(model)
     assert torch.equal(before, model(x))
+
+
+def test_two_lead_input_and_description():
+    m = ECGNet1D(in_channels=2)
+    out = m(torch.zeros(3, 2, 252), torch.zeros(3, 4))
+    assert out.shape == (3, 5)
+    with pytest.raises(ValueError):
+        m(torch.zeros(3, 252), torch.zeros(3, 4))
+    layers = describe_architecture(m)
+    assert layers[0]["output_shape"] == [1, 2, 252]
+    assert sum(layer["params"] for layer in layers) == count_parameters(m)

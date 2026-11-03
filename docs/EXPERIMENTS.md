@@ -31,3 +31,42 @@ zufällig. Das ist der Ansatzpunkt für A1.
 
 | Datum | ID | Änderung | macro_f1_nsvf | N Se | S F1 | V F1 | Entscheidung |
 |---|---|---|---|---|---|---|---|
+| 2026-11-03 | A1 `fixed` | ohne Validierung, feste Epochen (Snapshots 2/3/5/8/12/16/20) | bestes: 0,448 ± 0,012 (Ep. 12); Ep. 20: 0,415 ± 0,031 | 0,84 (Ep. 12) | 0,23 | 0,65 | verworfen: unter Basis 0,459 |
+| 2026-11-03 | A1 `fixed_aug` | wie `fixed` + Augmentierung | bestes: 0,453 ± 0,016 (Ep. 5); Ep. 20: 0,426 ± 0,009 | 0,90 (Ep. 5) | 0,22 | 0,66 | verworfen: unter Basis 0,459 |
+
+**A1-Fazit:** Keine feste Epochenzahl schlägt das Early Stopping der Basis, obwohl die beste Epoche
+hier sogar auf den Test-Folds gewählt wurde (also optimistisch). Mit mehr Epochen sinkt die
+N-Sensitivität stetig (0,88 → 0,79): Das Netz lernt die Trainingspatienten auswendig und
+überträgt das schlecht auf neue Patienten. Augmentierung hilft bei gleicher Epoche leicht
+(+0,01), bleibt aber innerhalb einer Std. Cosine-Lernrate wurde nicht mehr gerechnet, weil das
+Optimum schon nach 3–5 Epochen liegt. **Entscheidung:** Early Stopping bleibt; Augmentierung wird
+mit Early Stopping noch einmal geprüft (`es_aug`).
+
+## Runde 2 (vorab festgelegt, 2026-11-03, vor Sicht der Ergebnisse)
+
+Läufe, alle mit Early Stopping wie die Basis (3 Validierungs-Records je Fold,
+`max_class_share` 0,4, Patience 5, max. 20 Epochen), 5 Folds × Seeds 0/1/2, Out-of-fold-Logits
+gespeichert:
+
+| ID | Änderung gegenüber Basis |
+|---|---|
+| `es` | keine (Basis neu, damit Out-of-fold-Logits vorliegen; muss 0,459 reproduzieren) |
+| `wp05` | A2: Klassengewichte mit Exponent 0,5 (Wurzel) statt 1 |
+| `es_aug` | A1b: Augmentierung (Amplitude ±10 %, Rauschen σ 0,05, Verschiebung ±3 Samples) |
+| `l2` | A3: zweite Ableitung (meist V1) als zweiter CNN-Kanal |
+
+**Regeln für die Auswahl:**
+1. Eine Komponente gilt als „angenommen“, wenn ihr Lauf das Kriterium oben erfüllt
+   (Mittelwert ≥ Basis + 1 Std der Basis, N-Sensitivität nicht niedriger).
+2. Angenommene Komponenten werden in einem Kombinationslauf zusammen geprüft (A4: dabei auch
+   mit `--features patient`, weil dessen früherer Lauf 0,481 ± 0,024 knapp an der damals
+   festgelegten Schwelle scheiterte, unter der heutigen Regel aber knapp darüber läge).
+   Die Kombination ersetzt die beste Einzelkomponente nur, wenn sie wieder das Kriterium
+   gegenüber dieser erfüllt.
+3. A5/A6 werden auf den Out-of-fold-Logits der gewählten Konfiguration entschieden: Das
+   Seed-Ensemble wird übernommen, wenn es ≥ dem Mittel der Einzelmodelle ist (es kostet nur
+   Rechenzeit). Klassen-Offsets werden nur übernommen, wenn die verschachtelte Schätzung (Offsets
+   auf 4 Folds gelernt, auf dem 5. angewendet) `macro_f1_nsvf` um mindestens 0,01 über das
+   Ensemble ohne Offsets hebt.
+4. Danach wird die Konfiguration eingefroren (Commit) und DS2 genau einmal ausgewertet (A7),
+   mit Experten-R-Zacken und zusätzlich mit Pan-Tompkins-R-Zacken.

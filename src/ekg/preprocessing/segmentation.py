@@ -146,6 +146,7 @@ class BeatSet:
     labels: np.ndarray  # int64 (n,), index into CLASSES
     record: np.ndarray  # str (n,), record name per beat
     r_sample: np.ndarray  # int64 (n,)
+    beats2: np.ndarray | None = None  # float32 (n, L), optional second lead, same R peaks
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
@@ -172,12 +173,16 @@ class BeatSet:
         lengths = {s.beats.shape[1] for s in sets}
         if len(lengths) != 1:
             raise ValueError(f"cannot concat BeatSets with different window lengths {sorted(lengths)}")
+        has2 = {s.beats2 is not None for s in sets}
+        if len(has2) != 1:
+            raise ValueError("cannot concat BeatSets with and without a second lead")
         return BeatSet(
             beats=np.concatenate([s.beats for s in sets]).astype(np.float32, copy=False),
             rr=np.concatenate([s.rr for s in sets]).astype(np.float32, copy=False),
             labels=np.concatenate([s.labels for s in sets]).astype(np.int64, copy=False),
             record=np.concatenate([np.asarray(s.record, dtype=str) for s in sets]),
             r_sample=np.concatenate([s.r_sample for s in sets]).astype(np.int64, copy=False),
+            beats2=np.concatenate([s.beats2 for s in sets]).astype(np.float32, copy=False) if has2 == {True} else None,
         )
 
 

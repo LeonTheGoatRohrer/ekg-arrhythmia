@@ -360,3 +360,95 @@ def test_cv_without_validation_reports_epoch_snapshots(tmp_path):
     # the snapshot after the last epoch is the final model
     for r in rep["runs"]:
         assert r["by_epoch"]["2"]["macro_f1_nsvf"] == r["summary"]["macro_f1_nsvf"]
+    with np.load(tmp_path / "cv" / "cv_base_fixed_oof.npz") as z:
+        assert set(z.files) == {"y_true", "record", "logits_seed0", "logits_seed1"}
+        assert z["logits_seed0"].shape == (z["y_true"].size, 5)
+        assert (z["logits_seed1"].argmax(1) >= 0).all()
+    ana = pipeline.analyze_oof(tmp_path / "cv" / "cv_base_fixed.json")
+    assert ana["n_seeds"] == 2 and set(ana["offsets"]) == set(pipeline.CLASSES)
+    assert ana["offsets"]["N"] == 0.0 and ana["offsets"]["Q"] == 0.0
+    assert (tmp_path / "cv" / "cv_base_fixed_analysis.json").exists()
+
+
+def test_cv_with_second_lead(tmp_path):
+    names = ["901", "902", "903", "904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, names)
+    rep = pipeline.run_cv(data, tmp_path / "cv", cache_dir=tmp_path / "beats", k=2, seeds=[0], epochs=1,
+                          patience=None, n_val=1, max_class_share=None, ds1=names, leads=2, tag="l2")
+    assert rep["config"]["lead2_names"] == {n: "V5" for n in names}
+    assert (tmp_path / "beats" / "901_ref_lead2.npz").exists()
+    sets = pipeline.prepare_splits(data, tmp_path / "beats", ds1=names[:1], ds2=())["DS1"]
+    again, _ = pipeline.with_lead2(sets, data, tmp_path / "beats")  # from cache
+    assert again["901"].beats2.shape == sets["901"].beats.shape
+
+
+def test_fit_class_offsets_recovers_shifted_class():
+    rng = np.random.default_rng(0)
+    y = rng.choice(5, size=3000, p=[0.8, 0.1, 0.08, 0.01, 0.01])
+    logits = rng.normal(0, 1, (y.size, 5))
+    logits[np.arange(y.size), y] += 2.5
+    logits[:, 1] -= 2.0  # S is systematically under-predicted
+    logp = pipeline.log_softmax(logits)
+    b = pipeline.fit_class_offsets(logp, y)
+    from ekg.evaluation.metrics import summary
+    before = summary(y, logp.argmax(1), pipeline.CLASSES)["macro_f1_nsvf"]
+    after = summary(y, (logp + b).argmax(1), pipeline.CLASSES)["macro_f1_nsvf"]
+    assert b[1] > 1.0 and after > before
+    ens = pipeline.ensemble_log_probs([logits, logits])
+    np.testing.assert_allclose(ens, logp, atol=1e-9)
+
+
+def test_train_seed_ensemble_offsets_two_leads_and_detected_peaks(tmp_path):
+    ds1, ds2 = ["901", "902", "903"], ["904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, ds1 + ds2)
+    offsets = {"N": 0.0, "S": 0.5, "V": 0.0, "F": -1.0, "Q": 0.0}
+    m = pipeline.run_train(data, tmp_path / "art", None, epochs=1, patience=None, n_val=1, ds1=ds1, ds2=ds2,
+                           seeds=[0, 1], leads=2, offsets=offsets, eval_detected=True)
+    ens = m["cnn"]["ensemble"]
+    assert ens["seeds"] == [0, 1] and ens["offsets"] == offsets
+    assert set(ens["val_records"]) == {"0", "1"}
+    assert len(m["cnn"]["per_seed"]) == 2 and set(m["cnn"]["per_seed_aggregate"]) == {"macro_f1_nsvf", "macro_f1"}
+    assert m["config"]["leads"] == 2 and m["config"]["lead2_names"]["904"] == "V5"
+    det = m["detected_peaks"]
+    assert det["detector"]["records"] == 1 and det["detector"]["sensitivity"] > 0.99
+    assert det["cnn"]["summary"]["n"] == det["beats"] > 0
+    for s_ in (0, 1):
+        assert (tmp_path / "art" / f"model_seed{s_}.pt").exists()
+    from ekg.training.train import load_model
+    assert load_model(tmp_path / "art" / "model.pt").in_channels == 2
+
+
+def _external_128hz_record(dirpath: Path, name: str = "ext1", seconds: int = 120) -> None:
+    """A 128 Hz two-channel record made from the first minutes of record 100."""
+    import wfdb
+    n = 360 * seconds
+    rec = wfdb.rdrecord(str(SAMPLE / "100"), sampto=n)
+    ann = wfdb.rdann(str(SAMPLE / "100"), "atr", sampto=n)
+    x = np.stack([pipeline._resample(rec.p_signal[:, i], 360, 128) for i in range(2)], axis=1)
+    dirpath.mkdir(parents=True, exist_ok=True)
+    wfdb.wrsamp(name, fs=128, units=["mV", "mV"], sig_name=["ECG1", "ECG2"], p_signal=x.astype(np.float64),
+                fmt=["16", "16"], write_dir=str(dirpath))
+    keep = ann.sample < n
+    wfdb.wrann(name, "atr", np.round(ann.sample[keep] * 128 / 360).astype(np.int64),
+               symbol=list(np.asarray(ann.symbol)[keep]), write_dir=str(dirpath))
+
+
+def test_external_database_resampled_and_evaluated(tmp_path):
+    from ekg.training.train import save_model, train_cnn
+    ext = tmp_path / "svdb"
+    _external_128hz_record(ext)
+    bs, fs0, lead = pipeline.load_external_beats("ext1", ext, leads=2)
+    assert fs0 == 128 and lead == "ECG1"
+    assert bs.beats.shape[1] == 252 and bs.beats2.shape == bs.beats.shape
+    assert 140 <= len(bs) <= 160  # ~2 min at ~75 bpm
+    model, _ = train_cnn(bs, None, epochs=1, seed=0)
+    save_model(model, tmp_path / "models" / "model.pt")
+    pipeline._write_json(tmp_path / "models" / "ensemble.json",
+                         {"seeds": [0], "features": "base", "leads": 2, "offsets": {}})
+    metrics = tmp_path / "metrics.json"
+    pipeline._write_json(metrics, {"status": "complete"})
+    out = pipeline.run_external(tmp_path / "models", ext, tmp_path / "ext.json", metrics_paths=[metrics])
+    assert out["records"] == 1 and out["cnn"]["summary"]["n"] == len(bs)
+    assert pipeline._read_json(metrics)["external"]["fs_original"] == 128

@@ -1,8 +1,9 @@
 # Plan: vom jetzigen Stand zum Portfolio-Projekt
 
-Ziel: ein öffentliches, ehrliches, gut erklärbares Projekt für das Portfolio (Bewerbung für
-KI-/Automations-Praktika vor dem Robotik-Studium). Die Entwicklung mit KI-Agenten ist ein
-gewollter Teil der Geschichte.
+Ziel: ein öffentliches, ehrliches, gut erklärbares Portfolio-Projekt. Die Entwicklung mit
+KI-Agenten ist ein gewollter Teil der Geschichte. (Dieser Fahrplan entstand nach einem Review des
+Projektstands und wurde von Mensch und Agenten gemeinsam abgearbeitet; Ergebnisse der
+Modellphase stehen in [EXPERIMENTS.md](EXPERIMENTS.md).)
 
 Reihenfolge: **erst Phase A (Modell), dann B–E.** Jede Aufgabe hat ein Prüfkriterium
 („Fertig, wenn …“). Nach jeder Aufgabe: `pytest` grün, Commit.
@@ -138,8 +139,8 @@ entschieden?). Button auf der Startseite heißt dann z. B. „Wie es gebaut wurd
 
 **D1 Private Daten prüfen** (Stand heute: keine Passwörter, Tokens oder lokalen Pfade in den
 Dateien gefunden). Noch zu entscheiden/erledigen:
-- Commit-E-Mail `lerohrer@tsn.at` steht in der Git-Historie. Wenn das nicht öffentlich sein
-  soll: künftig die GitHub-noreply-Adresse verwenden; optional Historie umschreiben.
+- Commit-E-Mail: künftig die GitHub-noreply-Adresse verwenden; die bestehende Historie bleibt
+  unverändert.
 - `LOCAL_SETUP_PROMPT.md` entfernen (internes Arbeitsdokument).
 - `src/ekg.egg-info/` aus Git entfernen und in `.gitignore` aufnehmen.
 - Logs/Artefakte bleiben außerhalb von Git (bereits per `.gitignore`).
@@ -151,8 +152,8 @@ Dateien gefunden). Noch zu entscheiden/erledigen:
 **D3 GitHub-Seite**: Beschreibung, Topics (ecg, pytorch, machine-learning, ai-agents …),
 Homepage-Link, HTTPS erzwingen.
 
-**D4 Branches aufräumen**, alles in `master`, dann Repo auf öffentlich stellen (mache ich nur
-nach deinem OK).
+**D4 Branches aufräumen**, alles in `master`, dann Repo auf öffentlich stellen (nur nach
+Freigabe durch den Projektinhaber).
 
 ---
 
