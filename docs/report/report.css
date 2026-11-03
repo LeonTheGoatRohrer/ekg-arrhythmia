@@ -160,6 +160,9 @@ tr.sub td { color: var(--c-muted); }
 th.grp { text-align: center; border-bottom: 0.2mm solid var(--c-raw); color: var(--c-text); }
 td.best { font-weight: 600; }
 table.layers td { padding-top: 0.8mm; padding-bottom: 0.8mm; }
+table.kv { margin-top: 1mm; }
+table.kv td { padding: 0.8mm 1.2mm; }
+table.kv td:first-child { white-space: nowrap; font-weight: 600; color: var(--c-muted); width: 1%; }
 table.layers td.r { white-space: nowrap; }
 .lim { gap: 3.2mm; margin-bottom: 1mm; }
 .lim .card { font-size: 8.3pt; line-height: 1.45; padding: 3mm 3.2mm; }
