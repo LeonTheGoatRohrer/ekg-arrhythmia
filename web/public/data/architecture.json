@@ -18,10 +18,10 @@
       "type": "Input",
       "output_shape": [
         1,
-        4
+        10
       ],
       "params": 0,
-      "detail": "4 RR features (pre_rr, post_rr, local_rr, pre/local ratio)"
+      "detail": "4 RR features (pre_rr, post_rr, local_rr, pre/local ratio) + 6 patient-relative features"
     },
     {
       "name": "features.conv1",
@@ -181,10 +181,10 @@
       "type": "BatchNorm1d",
       "output_shape": [
         1,
-        4
+        10
       ],
-      "params": 8,
-      "detail": "features=4"
+      "params": 20,
+      "detail": "features=10"
     },
     {
       "name": "rr_branch.fc",
@@ -193,8 +193,8 @@
         1,
         16
       ],
-      "params": 80,
-      "detail": "4->16"
+      "params": 176,
+      "detail": "10->16"
     },
     {
       "name": "rr_branch.relu",
@@ -257,10 +257,12 @@
       "detail": "64->5"
     }
   ],
-  "total_params": 14749,
+  "total_params": 14857,
   "input": {
     "beat_len": 252,
-    "n_rr": 4
+    "n_rr": 10,
+    "leads": 1
   },
-  "note": "Architektur eines frisch initialisierten Modells – kein Trainingsergebnis."
+  "note": "Architektur des finalen Modells (Konfiguration aus dem Training).",
+  "source": "train"
 }

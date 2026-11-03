@@ -152,3 +152,23 @@ klassifiziert).
 Einordnung: Die DS2-Werte liegen über der CV auf DS1 (0,483 mit Ensemble). DS2 ist für dieses
 Modell offenbar etwas „leichter“ als die DS1-Folds; die CV-Zahl ist die vorsichtigere Schätzung.
 Größte Fehlerquelle bleibt S ↔ N (1 545 N als S, 523 S als N); F wird praktisch nicht erkannt.
+
+## A8 – externer Test: MIT-BIH Supraventricular Arrhythmia Database (2026-11-03)
+
+Finales Ensemble aus A7 unverändert angewendet (kein Nachtraining, keine Anpassung).
+78 Records, 128 Hz → auf 360 Hz hochgerechnet (`resample_poly`), Kanal ECG1 (Ableitung in der
+Datenbank nicht angegeben), Experten-R-Zacken. 184 515 Schläge: N 162 276 · S 12 196 · V 9 941 ·
+F 23 · Q 79.
+
+| Klasse | Sensitivität | PPV | F1 |
+|---|---|---|---|
+| N | 95,4 % | 97,3 % | 0,963 |
+| S | 46,0 % | 60,5 % | 0,522 |
+| V | 90,3 % | 67,0 % | 0,770 |
+| F | 0,0 % | 0,0 % | 0,000 (nur 23 Schläge) |
+
+macro_f1_nsvf 0,564 (durch F mit 23 Schlägen stark gedrückt), macro_f1 0,451.
+Häufigste Fehler: S als N (3 932) und S als V (2 473); N als F (2 511).
+Einordnung: Das Modell überträgt sich auf eine fremde Datenbank mit anderer Abtastrate und
+unbekannter Ableitung. S wird seltener gefunden als auf DS2 (46 % statt 66 %), dafür sind die
+S-Alarme häufiger richtig (61 % statt 43 %).
