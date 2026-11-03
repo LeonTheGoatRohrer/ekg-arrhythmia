@@ -10,7 +10,11 @@ der MIT-BIH Arrhythmia Database den fünf AAMI-EC57-Klassen **N, S, V, F, Q** zu
 **Live-Demo:** <https://leonrohrer.at/ekg-arrhythmia/> – zeigt jeden Schritt vom Rohsignal bis
 zur Klasse, mit Diagrammen und echten Daten.
 
-![Startseite der Web-Oberfläche: Signal von Record 100, Rhythmus-Player, Kennzahlen und Pipeline](docs/screenshots/overview-light.png)
+![Startseite der Web-Oberfläche: Signal von Record 100 und Rhythmus-Player](docs/screenshots/overview-hero.png)
+
+**Projektbericht (PDF, Englisch, 14 Seiten):** [docs/report/ekg-arrhythmia-report.pdf](docs/report/ekg-arrhythmia-report.pdf) ·
+**Fragen und Antworten:** [docs/ERKLAERT.md](docs/ERKLAERT.md) · **Experiment-Protokoll:**
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
 
 > Lern- und Portfolio-Projekt. **Kein Medizinprodukt**, nicht für Diagnosen geeignet.
 

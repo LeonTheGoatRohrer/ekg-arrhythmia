@@ -112,7 +112,7 @@ Fertig, wenn: kein Satz mehr sagt „physionet gesperrt“ oder „noch keine Ke
 Fertig, wenn: `grep` nach „ausstehend|pending|gesperrt|blocked“ trifft nur noch Code für
 Leerzustände, keine Inhaltstexte.
 
-**B3 Interview-Spickzettel** (`docs/ERKLAERT.md`, nur für mich, nicht öffentlich nötig):
+**B3 Fragen und Antworten** (`docs/ERKLAERT.md`, als öffentliche FAQ):
 Warum inter-patient? Warum Macro-F1 statt Accuracy? Warum scheitert F? Was macht
 Pan-Tompkins? Was ist die VEB-Regel? Warum ist DS2 heilig? Wie liefen die Agenten?
 Fertig, wenn: ich jede Frage in 2–3 Sätzen frei beantworten kann.

@@ -1249,26 +1249,25 @@
     {
       "id": "docs-texts",
       "block": "B6 Review & Veröffentlichung",
-      "title": "README (DE/EN) und LinkedIn-Texte",
+      "title": "README (DE/EN), FAQ und LinkedIn-Texte",
       "status": "done",
       "agent": "session docs-texts",
       "owns": [
         "README.md",
         "README.en.md",
-        "docs/linkedin/"
+        "docs/ERKLAERT.md"
       ],
       "depends_on": [
         "review-plan"
       ],
-      "summary": "README neu auf Deutsch und Englisch (Ergebnisse, Literaturvergleich, Grenzen, Methodik-Transparenz, Agenten-Workflow), LinkedIn-Projekteintrag und Post auf Englisch.",
+      "summary": "README neu auf Deutsch und Englisch (Ergebnisse, Literaturvergleich, Grenzen, Methodik-Transparenz, Agenten-Workflow), Fragen und Antworten zum Projekt (docs/ERKLAERT.md), LinkedIn-Projekteintrag und Post auf Englisch (lokal, nicht im Repo).",
       "decisions": [
         "Alle Modellzahlen in markierten Blöcken, nach der finalen Auswertung ersetzt"
       ],
       "files": [
         "README.md",
         "README.en.md",
-        "docs/linkedin/project-entry.md",
-        "docs/linkedin/post.md"
+        "docs/ERKLAERT.md"
       ],
       "tests": [],
       "history": [

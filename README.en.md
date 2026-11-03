@@ -10,7 +10,11 @@ agents**.
 **Live demo:** <https://leonrohrer.at/ekg-arrhythmia/> – shows every step from the raw signal to
 the class, with diagrams and real data.
 
-![Home page of the web UI: signal of record 100, rhythm player, metrics and pipeline](docs/screenshots/overview-light.png)
+![Home page of the web UI: signal of record 100 and rhythm player](docs/screenshots/overview-hero.png)
+
+**Project report (PDF, 14 pages):** [docs/report/ekg-arrhythmia-report.pdf](docs/report/ekg-arrhythmia-report.pdf) ·
+**Q&A (German):** [docs/ERKLAERT.md](docs/ERKLAERT.md) · **Experiment log (German):**
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
 
 > Learning and portfolio project. **Not a medical device**, not suitable for diagnosis.
 

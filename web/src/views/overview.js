@@ -104,12 +104,16 @@ function buildTiles({ signal, arch, stats, metrics }) {
   if (metrics && metrics.status === 'complete') {
     const cnn = metrics.cnn?.summary;
     const tree = metrics.tree?.summary;
-    if (cnn?.macro_f1 != null) tiles.push({ label: tr('Macro-F1 · 1D-CNN', 'Macro F1 · 1D CNN'), value: fmt(cnn.macro_f1, 3), unit: '', hint: `${esc(metrics.split || 'DS1 → DS2')}`, src: 'metrics.json' });
+    // Headline macro F1 over N/S/V/F (as in README, report and literature); Q has only a handful of beats.
+    const nsvf = (s) => s?.macro_f1_nsvf ?? s?.macro_f1;
+    const all5 = (s) => (s?.macro_f1_nsvf != null && s?.macro_f1 != null ? ` · ${tr('alle 5 Klassen', 'all 5 classes')}: ${fmt(s.macro_f1, 3)}` : '');
+    const f1Label = (de, en) => (cnn?.macro_f1_nsvf != null ? tr(`${de} (N, S, V, F)`, `${en} (N, S, V, F)`) : tr(de, en));
+    if (nsvf(cnn) != null) tiles.push({ label: f1Label('Macro-F1 · 1D-CNN', 'Macro F1 · 1D CNN'), value: fmt(nsvf(cnn), 3), unit: '', hint: `${esc(metrics.split || 'DS1 → DS2')}${all5(cnn)}`, src: 'metrics.json' });
     if (cnn?.per_class?.V?.sensitivity != null) tiles.push({ label: tr('Sensitivität V · CNN', 'Sensitivity V · CNN'), value: pct(cnn.per_class.V.sensitivity), unit: '', hint: `PPV ${pct(cnn.per_class.V.ppv)}`, src: 'metrics.json' });
     if (cnn?.per_class?.S?.sensitivity != null) tiles.push({ label: tr('Sensitivität S · CNN', 'Sensitivity S · CNN'), value: pct(cnn.per_class.S.sensitivity), unit: '', hint: `PPV ${pct(cnn.per_class.S.ppv)}`, src: 'metrics.json' });
-    if (tree?.macro_f1 != null) tiles.push({ label: tr('Macro-F1 · Entscheidungsbaum', 'Macro F1 · decision tree'), value: fmt(tree.macro_f1, 3), unit: '', hint: tr('interpretierbare Baseline', 'interpretable baseline'), src: 'metrics.json' });
+    if (nsvf(tree) != null) tiles.push({ label: f1Label('Macro-F1 · Entscheidungsbaum', 'Macro F1 · decision tree'), value: fmt(nsvf(tree), 3), unit: '', hint: `${tr('interpretierbare Baseline', 'interpretable baseline')}${all5(tree)}`, src: 'metrics.json' });
     const e2e = metrics.detected_peaks?.cnn?.summary;
-    if (e2e?.macro_f1 != null) tiles.push({ label: tr('End-to-End (Pan-Tompkins)', 'End to end (Pan-Tompkins)'), value: fmt(e2e.macro_f1, 3), unit: '', hint: tr('Macro-F1 des CNN auf selbst detektierten Schlägen', 'CNN macro F1 on self-detected beats'), src: 'metrics.json' });
+    if (nsvf(e2e) != null) tiles.push({ label: tr('End-to-End (Pan-Tompkins)', 'End to end (Pan-Tompkins)'), value: fmt(nsvf(e2e), 3), unit: '', hint: `${tr('Macro-F1 (N, S, V, F) des CNN auf selbst detektierten Schlägen', 'CNN macro F1 (N, S, V, F) on self-detected beats')}${all5(e2e)}`, src: 'metrics.json' });
   }
   return tiles;
 }

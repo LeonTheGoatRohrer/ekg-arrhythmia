@@ -9,3 +9,6 @@ artifacts/
 .state-*.json
 *.zip
 *.egg-info/
+
+# lokale, nicht veröffentlichte Notizen (z. B. LinkedIn-Entwürfe)
+private/

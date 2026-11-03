@@ -1,8 +1,8 @@
-# Erklärt: Spickzettel fürs Gespräch
+# Erklärt: Fragen und Antworten zum Projekt
 
-Kurze Antworten zum Frei-Erzählen, je 2–4 Sätze, mit Verweis auf die Stelle im Code. Die
-Antworten selbst enthalten keine Modellzahlen; die stehen gesammelt im Block
-[Zahlen zum Merken](#zahlen-zum-merken) am Ende.
+Kurze Antworten auf die Fragen, die man zu diesem Projekt am häufigsten stellt – je 2–4 Sätze,
+mit Verweis auf die Stelle im Code. Die Antworten selbst enthalten keine Modellzahlen; die stehen
+gesammelt in [Die wichtigsten Zahlen](#die-wichtigsten-zahlen) am Ende.
 
 ## Daten und Auswertung
 
@@ -148,7 +148,7 @@ würde ich laufend statt über den ganzen Record berechnen, damit das Modell ech
 
 Beleg: [EXPERIMENTS.md](EXPERIMENTS.md) (A1, A3, A5), [PLAN.md](PLAN.md) (A9).
 
-## Typische Rückfragen
+## Häufige Fragen
 
 **1. „Warum klappt V gut, S aber schlecht?“**
 V-Schläge sehen anders aus (breiter, verformter QRS-Komplex), das sieht das CNN direkt in der Form.
@@ -182,7 +182,7 @@ Tests, kalibrierte Wahrscheinlichkeiten statt nur Klassen und eine klinische Val
 die Regulierung als Medizinprodukt (in der EU die MDR) mit dokumentiertem Software-Lebenszyklus.
 Dieses Projekt ist bewusst ein Lern- und Portfolio-Projekt und kein Medizinprodukt.
 
-## Zahlen zum Merken
+## Die wichtigsten Zahlen
 
 <!-- METRICS:START -->
 <!-- final: Werte aus web/public/data/metrics.json (generated_at 2026-11-03T12:05:00+00:00) und docs/EXPERIMENTS.md. Einmalige DS2-Auswertung mit Konfiguration aus Commit 72b1cab. -->
