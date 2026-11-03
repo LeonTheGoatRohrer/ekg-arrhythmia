@@ -446,20 +446,24 @@ def build_segmentation_demo(record: Record, per_class: int = EXAMPLES_PER_CLASS)
     }
 
 
-def build_architecture(seed: int = 0) -> dict:
-    """architecture.json from a freshly initialised ECGNet1D (architecture, not a result)."""
+def build_architecture(seed: int = 0, **model_kwargs: Any) -> dict:
+    """architecture.json from a freshly initialised ECGNet1D (architecture, not a result).
+
+    ``model_kwargs`` (e.g. ``n_rr``, ``in_channels``) describe a non-default model; ``train``
+    uses them to export the architecture of the final model (``source: "train"``).
+    """
     import torch
 
     from ekg.models.cnn1d import ECGNet1D, count_parameters, describe_architecture
 
     torch.manual_seed(seed)
-    model = ECGNet1D()
+    model = ECGNet1D(**model_kwargs)
     return {
         "schema_version": SCHEMA_VERSION,
         "model": "ECGNet1D",
         "layers": describe_architecture(model),
         "total_params": int(count_parameters(model)),
-        "input": {"beat_len": int(model.in_len), "n_rr": int(model.n_rr)},
+        "input": {"beat_len": int(model.in_len), "n_rr": int(model.n_rr), "leads": int(model.in_channels)},
         "note": "Architektur eines frisch initialisierten Modells – kein Trainingsergebnis.",
     }
 
@@ -543,7 +547,11 @@ def run_demo(record_path: str | Path, out_dir: str | Path, *, data_dir: str | Pa
     written["segmentation_demo.json"] = _write_json(out_dir / "segmentation_demo.json", seg, compact=True)
     written["filter_response.json"] = _write_json(out_dir / "filter_response.json",
                                                   build_filter_response(record.fs), compact=True)
-    written["architecture.json"] = _write_json(out_dir / "architecture.json", build_architecture())
+    existing_arch = _read_json(out_dir / "architecture.json")
+    if not force and isinstance(existing_arch, dict) and existing_arch.get("source") == "train":
+        _log("architecture.json des finalen Modells existiert bereits – wird nicht überschrieben.")
+    else:
+        written["architecture.json"] = _write_json(out_dir / "architecture.json", build_architecture())
 
     # Never overwrite results of a real full training with placeholders.
     existing_metrics = _read_json(out_dir / "metrics.json")
@@ -1057,6 +1065,9 @@ def run_train(data_dir: str | Path, out_dir: str | Path, export_dir: str | Path 
         _write_json(target / "metrics.json", metrics)
         _write_json(target / "tree.json", res["tree_json"])
         _write_json(target / "dataset_stats.json", stats)
+        arch = build_architecture(n_rr=int(res["model"].n_rr), in_channels=int(res["model"].in_channels))
+        arch.update(source="train", note="Architektur des finalen Modells (Konfiguration aus dem Training).")
+        _write_json(target / "architecture.json", arch)
     s = metrics["cnn"]["summary"]
     _log(f"Fertig: CNN macro-F1 (DS2) = {s['macro_f1']:.4f} (N/S/V/F {s['macro_f1_nsvf']:.4f}), Baum macro-F1 "
          f"(DS2) = {metrics['tree']['summary']['macro_f1']:.4f}; Modell: {out_dir / 'model.pt'}")

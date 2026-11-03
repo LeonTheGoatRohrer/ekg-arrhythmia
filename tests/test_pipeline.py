@@ -452,3 +452,17 @@ def test_external_database_resampled_and_evaluated(tmp_path):
     out = pipeline.run_external(tmp_path / "models", ext, tmp_path / "ext.json", metrics_paths=[metrics])
     assert out["records"] == 1 and out["cnn"]["summary"]["n"] == len(bs)
     assert pipeline._read_json(metrics)["external"]["fs_original"] == 128
+
+
+def test_train_exports_final_architecture_and_demo_keeps_it(tmp_path):
+    ds1, ds2 = ["901", "902", "903"], ["904"]
+    data = tmp_path / "mitdb"
+    _stand_in_records(data, ds1 + ds2)
+    web = tmp_path / "web"
+    pipeline.run_train(data, tmp_path / "art", web, epochs=1, patience=None, n_val=1, ds1=ds1, ds2=ds2,
+                       features="patient")
+    arch = pipeline._read_json(web / "architecture.json")
+    assert arch["source"] == "train" and arch["input"]["n_rr"] == 10
+    assert arch["total_params"] == sum(layer["params"] for layer in arch["layers"])
+    pipeline.run_demo(SAMPLE / "100", web, data_dir=data)
+    assert pipeline._read_json(web / "architecture.json")["source"] == "train"

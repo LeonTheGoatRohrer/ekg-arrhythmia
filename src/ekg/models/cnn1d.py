@@ -252,7 +252,8 @@ def describe_architecture(model: ECGNet1D, in_len: int | None = 252) -> list[dic
                 "type": "Input",
                 "output_shape": [1, n_rr],
                 "params": 0,
-                "detail": f"{n_rr} RR features (pre_rr, post_rr, local_rr, pre/local ratio)",
+                "detail": "4 RR features (pre_rr, post_rr, local_rr, pre/local ratio)" + (
+                    f" + {n_rr - 4} patient-relative features" if n_rr > 4 else ""),
             }
         )
 
