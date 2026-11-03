@@ -96,3 +96,30 @@ gespeichert:
 - **A4:** `patient` ist die einzige angenommene Komponente; Kombination nach Regel 2 entfällt
   damit. `patient` wird mit gespeicherten Out-of-fold-Logits wiederholt (`patient_es`), um
   Ensemble und Offsets auch dort zu prüfen.
+
+### Entscheidung und eingefrorene Konfiguration (2026-11-03, vor der DS2-Auswertung)
+
+`patient_es` (Wiederholung mit gespeicherten Logits) reproduziert 0,4815 ± 0,0240.
+Ensemble aus 3 Seeds: 0,4828 (N Se 0,91, S Se/PPV 0,32/0,22, V Se/PPV 0,87/0,62);
+Ensemble + Offsets verschachtelt: 0,4611.
+
+Nach den vorab festgelegten Regeln:
+- Regel 1/2: `patient` ist die einzige angenommene Komponente → Merkmalssatz `patient`.
+- Regel 3: Ensemble (0,4828) ≥ Mittel der Einzelmodelle (0,4815) → Seed-Ensemble ja.
+  Offsets verschachtelt schlechter (0,4611) → keine Offsets.
+- Beobachtung, offen benannt: Mit Ensemble liegen Basis (0,4860) und `patient` (0,4828)
+  gleichauf; der Unterschied liegt weit innerhalb einer Standardabweichung. Die Regel wurde vor
+  dieser Beobachtung festgelegt und wird nicht nachträglich geändert.
+
+**Finale Konfiguration (A7):** CNN mit patientenrelativen Merkmalen (`--features patient`,
+10 Zusatzeingänge), Klassengewichte invers (Exponent 1, Deckel 50×), ohne Augmentierung, eine
+Ableitung (MLII), Adam lr 1e-3, Batch 256, max. 20 Epochen, Early Stopping (Patience 5) auf
+4 DS1-Validierungs-Records je Seed (`max_class_share` 0,4), Seed-Ensemble aus 5 Seeds (0–4,
+Mittel der Softmax-Wahrscheinlichkeiten), keine Klassen-Offsets. Entscheidungsbaum unverändert
+(Tiefe 4). Auswertung auf DS2 genau einmal, mit Experten-R-Zacken (Hauptergebnis) und mit
+Pan-Tompkins-R-Zacken (Ende-zu-Ende).
+
+```bash
+python -m ekg.pipeline train --features patient --seeds 0 1 2 3 4 --max-class-share 0.4 \
+  --eval-detected --cv-report artifacts/cv/cv_patient_es.json
+```
