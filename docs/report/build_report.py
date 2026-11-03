@@ -12,7 +12,13 @@ One-time setup (optional extra, deliberately not in pyproject.toml):
     python -m playwright install chromium   # optional: an installed Chrome or Edge is used as fallback
 
 Add ``--preliminary`` for a build made before the final DS2 evaluation; it marks the cover and
-the summary page accordingly.
+the summary page accordingly. ``--data-dir`` and ``--out`` build from other exports into another
+file (for trying out an example metrics.json without touching the committed PDF).
+
+Optional metrics.json blocks of the final schema get their own text and sections when present:
+``cnn.ensemble`` / ``cnn.per_seed_aggregate`` (seed ensemble, class offsets), the extra ``config``
+fields (seeds, weight_power, augment, leads, lead2_names, max_class_share, offsets), ``cv``,
+``detected_peaks`` and ``external``.
 
 Output: docs/report/ekg-arrhythmia-report.pdf. The intermediate HTML and the SVG figures are
 written to docs/report/build/ (git-ignored). Every model number is read from
@@ -31,6 +37,7 @@ import logging
 import re
 import subprocess
 import sys
+from collections import Counter
 from html import escape
 from pathlib import Path
 
@@ -87,8 +94,8 @@ def css_tokens() -> dict[str, str]:
 C = css_tokens()
 
 
-def load(name: str) -> dict:
-    return json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
+def load(data_dir: Path, name: str) -> dict:
+    return json.loads((data_dir / f"{name}.json").read_text(encoding="utf-8"))
 
 
 def count_tests() -> int | None:
@@ -147,6 +154,35 @@ def cls(c: str) -> str:
 
 def figure(svg: str, caption: str) -> str:
     return f'<figure><div class="fig-svg">{svg}</div><figcaption>{caption}</figcaption></figure>'
+
+
+def class_table(groups: list[tuple[str, dict]], keys=("sensitivity", "ppv"), beats: dict | None = None) -> str:
+    """Per-class table with one column group (Se / PPV / F1) per (label, summary)."""
+    short = {"sensitivity": "Se", "ppv": "PPV", "f1": "F1"}
+    fmt = {"sensitivity": pct, "ppv": pct, "f1": dec}
+    n, first = len(keys), 2 if beats else 1
+    head = ('<tr><th rowspan="2">Class</th>' + ('<th rowspan="2" class="r">Beats</th>' if beats else "")
+            + "".join(f'<th colspan="{n}" class="grp">{label}</th>' for label, _ in groups) + "</tr><tr>"
+            + "".join(f'<th class="r">{short[k]}</th>' for _ in groups for k in keys) + "</tr>")
+    rows = "".join(f"<tr><td>{cls(c)}</td>" + (f"<td class='r muted'>{beats.get(c, 0):,}</td>" if beats else "")
+                   + "".join(f"<td class='r'>{fmt[k](s['per_class'][c][k])}</td>" for _, s in groups for k in keys)
+                   + "</tr>" for c in CLASSES)
+    for key, label, css in (("macro_f1_nsvf", "Macro-F1 (N, S, V, F)", "total"), ("macro_f1", "Macro-F1 (all five)", "sub")):
+        rows += (f"<tr class='{css}'><td colspan='{first}'>{label}</td>"
+                 + "".join(f"<td class='r' colspan='{n}'>{dec(s[key])}</td>" for _, s in groups) + "</tr>")
+    return f'<table class="avoid"><thead>{head}</thead><tbody>{rows}</tbody></table>'
+
+
+def offsets_text(offsets: dict | None) -> str:
+    """'S +0.50, F −1.00' for the non-zero class offsets ('' if there are none)."""
+    return ", ".join(f"{c} {v:+.2f}".replace("-", "−") for c, v in (offsets or {}).items() if v)
+
+
+def lead2_text(names: dict) -> str:
+    """'V1 (40 records), V5 (2)' from config.lead2_names."""
+    counts = Counter(names.values()).most_common()
+    return ", ".join(f"{lead} ({n} record{'s' if n != 1 else ''})" if i == 0 else f"{lead} ({n})"
+                     for i, (lead, n) in enumerate(counts))
 
 
 # ----------------------------------------------------------------------------- matplotlib
@@ -394,7 +430,7 @@ def fig_rr(sig: dict) -> tuple[str, dict]:
     lo, hi = t_ann[sel[0]] - 0.35, t_ann[sel[-1]] + 0.35
     t = np.arange(y.size) / fs
     m = (t >= lo) & (t <= hi)
-    fig, ax = plt.subplots(figsize=(174 * MM, 34 * MM), layout="constrained")
+    fig, ax = plt.subplots(figsize=(174 * MM, 32 * MM), layout="constrained")
     ax.plot(t[m], y[m], color=C["filtered"], lw=0.9)
     top = y[m].max() + 0.25
     col_k = C["cls-" + lab[k]]
@@ -735,7 +771,7 @@ saw during development.</p>
   scores far beyond what a new patient would see.</p></div>
   <div class="card"><h3>Approach</h3><p>MIT-BIH Arrhythmia Database, split inter-patient into DS1 (training) and
   DS2 (test) after de Chazal et al. (2004). Filtering, Pan-Tompkins R-peak detection, one window per beat plus RR
-  intervals; a compact 1D CNN ({ctx['params']:,} parameters) and an interpretable decision tree.</p></div>
+  intervals; {ctx['cnn_phrase']} and an interpretable decision tree.</p></div>
   <div class="card"><h3>Built with AI agents</h3><p>A coordinating “mother agent” split the work into
   {ctx['n_modules']} modules for up to {ctx['max_agents']} parallel sub-agents, held together by binding interface
   contracts and a lock-safe status protocol. Goals, rules and final checks stayed with the human.</p></div>
@@ -746,7 +782,7 @@ saw during development.</p>
 <strong>positive predictive value (PPV)</strong> is the share of the model's alarms for that class that were right.
 For orientation: de Chazal et al. (2004) reported Se {pct(dc['S']['sensitivity'])} / PPV {pct(dc['S']['ppv'])} for
 S and Se {pct(dc['V']['sensitivity'])} / PPV {pct(dc['V']['ppv'])} for V on the same split (details in chapter 5).
-The interpretable decision tree reaches a macro-F1 of {dec(ctx['tree']['macro_f1_nsvf'])} (N, S, V, F).</p>
+{ctx['ensemble_short']}The interpretable decision tree reaches a macro-F1 of {dec(ctx['tree']['macro_f1_nsvf'])} (N, S, V, F).</p>
 <div class="callout warn"><div class="callout-title">Read with care</div><ul>{prelim}
 <li>{ctx['ds2_history_short']}</li>
 <li>{ctx['fq_sentence']}</li>
@@ -835,7 +871,7 @@ def data_page(ctx: dict) -> str:
 reference dataset of arrhythmia research: 48 half-hour excerpts of two-channel ambulatory ECGs from 47 subjects,
 recorded at Beth Israel Hospital in Boston, sampled at {ctx['fs']} Hz with 11-bit resolution. At least two
 cardiologists annotated every single beat independently; disagreements were resolved by consensus. The project
-uses lead <code>MLII</code>, in which the R peaks are particularly clear.</p>
+uses lead <code>MLII</code>, in which the R peaks are particularly clear{ctx['lead2_data']}.</p>
 <ul>
 <li><strong>Excluded:</strong> the four records with a pacemaker (102, 104, 107, 217), as recommended by AAMI —
 paced beats have their own shape. {st.get('records_available', len(recs['DS1']) + len(recs['DS2']))} records
@@ -962,17 +998,21 @@ def models_pages(ctx: dict) -> str:
                   for k, g in groups.items())
     trs += f"<tr class='total'><td>Total</td><td></td><td></td><td class='r'>{arch['total_params']:,}</td></tr>"
     cnn = m["cnn"]
-    val_recs = ", ".join(m.get("records", {}).get("val", []))
     t = m["tree"]
-    feats = "".join(f"<li><code>{f}</code> — {TREE_FEATURES.get(f, (f, '', ''))[2]}</li>" for f in t.get("features", []))
-    cap = ctx["weight_cap"]
+    feats = "; ".join(f"{TREE_FEATURES[f][0]} ({TREE_FEATURES[f][2]})" if f in TREE_FEATURES else f
+                      for f in t.get("features", []))
     hist = cnn.get("history")
-    training_fig = figure(ctx["fig_history"], "<b>Figure 9.</b> Training history (metrics.json). The dotted line "
-                          "marks the epoch whose weights were kept.") if hist else ""
+    ens = ctx["ensemble"]
+    training_fig = figure(ctx["fig_history"], "<b>Figure 9.</b> Training history (metrics.json"
+                          + (f", model of seed {ens['seeds'][0]}" if ens and len(ens['seeds']) > 1 else "")
+                          + "). The dotted line marks the epoch whose weights were kept.") if hist else ""
     train_time = (f", and the whole training run took about {m['train_seconds'] / 60:.1f} minutes on a CPU"
                   if "train_seconds" in m else "")
-    epochs_sentence = (f"In the run reported here, training stopped after {cnn['epochs_run']} epochs and the weights of "
-                       f"epoch {cnn['best_epoch']} were kept." if "epochs_run" in cnn and "best_epoch" in cnn else "")
+    setup = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in ctx["training_setup"])
+    arch_note = ("" if ctx["params"] == arch["total_params"] else
+                 f'<p class="small muted" style="margin-top:1.5mm">The trained model has {ctx["params"]:,} parameters; '
+                 f'figure and table show the one-lead layout from architecture.json ({arch["total_params"]:,})'
+                 + ("; the second lead only widens the first convolution." if ctx["leads"] == 2 else ".") + "</p>")
     body = f"""
 <h2 style="margin-top:0">4.1 A compact 1D convolutional network</h2>
 <p>A <strong>1D convolutional neural network</strong> slides small learned filters across the beat window. Each filter
@@ -982,27 +1022,23 @@ Three convolution blocks (convolution, batch normalization, ReLU, max-pooling) h
 step, so deeper layers see larger parts of the beat. A global average then condenses each channel into one number.
 In parallel, the four RR features pass through a small dense layer. Both branches are concatenated and mapped by a
 small classification head to one score per AAMI class — the network judges <em>shape and timing together</em>.
-With {arch['total_params']:,} trainable parameters it is deliberately small, leaving little room to memorize the
-{len(m.get('records', {}).get('train', [])) or ''} training records{train_time}.</p>
+With {ctx['params']:,} trainable parameters it is deliberately small, leaving little room to memorize the
+{len(m.get('records', {}).get('train', [])) or ''} training records{train_time}.{ctx['lead2_model']}</p>
 {figure(ctx['fig_cnn'], f"<b>Figure 8.</b> ECGNet1D as drawn from architecture.json: the time axis shrinks from "
         f"{arch['input']['beat_len']} samples while the number of learned channels grows (k = kernel size); the RR branch "
         "joins before the classification head.")}
 <table class="avoid layers"><thead><tr><th>Stage</th><th>Layers</th><th class="r">Output shape</th>
 <th class="r">Parameters</th></tr></thead><tbody>{trs}</tbody></table>
+{arch_note}
 
 <h2>4.2 Training against the imbalance</h2>
+<p><strong>Weighted loss.</strong> The cross-entropy loss gives rare classes a larger weight, so a missed S beat costs
+much more than a missed N beat; without this, the network would largely ignore the rare classes.
+<strong>Validation inside DS1 only:</strong> held-out DS1 records decide when to stop. DS2 is used neither for choosing
+settings nor for the stopping point — otherwise test information would leak into the model. Records that hold a
+large share of a rare class stay in training: record 208 alone holds about 90% of all DS1 fusion beats.</p>
 <div class="cols wide-left">
-<div>
-<p><strong>Weighted loss.</strong> The cross-entropy loss weights every class inversely to its frequency in the
-training data{f', capped at {cap}× the weight of the most common class' if cap else ''}. A missed S beat therefore costs
-much more than a missed N beat; without this, the network would largely ignore the rare classes.</p>
-<p><strong>Optimizer.</strong> Adam with learning rate {cfg.get('lr', '')}, mini-batches of {cfg.get('batch_size', '')} beats,
-up to {cfg.get('epochs', '')} epochs, fixed random seed {cfg.get('seed', '')} for reproducibility.</p>
-<p><strong>Validation inside DS1 only.</strong> Records {val_recs} of DS1 are held out for early stopping (patience
-{cfg.get('patience', '')} epochs). DS2 is used neither for choosing settings nor for the stopping point — otherwise
-test information would leak into the model. Records that hold a large share of a rare class stay in training: record
-208 alone holds about 90% of all DS1 fusion beats. {epochs_sentence}</p>
-</div>
+<table class="kv small"><tbody>{setup}</tbody></table>
 {training_fig}
 </div>
 
@@ -1014,7 +1050,7 @@ is a readable if-then rule — the price is far less expressive power than the C
 {figure(ctx['fig_tree'], "<b>Figure 10.</b> The learned tree (tree.json). Each box tests one feature; the left branch is "
         "taken when the condition holds. Colored bars and leaves show the class the tree would predict (with balanced "
         "class weights); numbers are training beats reaching the node. Amplitudes are in units of the normalized beat.")}
-<ul class="small" style="columns: 2; column-gap: 8mm">{feats}</ul>
+<p class="small"><strong>Features:</strong> {feats}.</p>
 """
     return section("4 · Models", "Two models: a compact CNN and an interpretable tree", body)
 
@@ -1068,11 +1104,11 @@ def results_pages(ctx: dict) -> str:
     stats_note = ("Values for this project are gross statistics (all test beats pooled), as in the paper"
                   + (f"; {escape(veb_rule)}" if veb_rule else "") + "." if gross_cnn else
                   "Values for this project are pooled over all test beats.")
-    cv_html = cv_section(m.get("cv"))
+    extra = cv_section(m.get("cv"), cnn) + detected_section(ctx) + external_section(ctx)
     body = f"""
 <p class="lead">All numbers in this chapter come from <code>metrics.json</code> (generated {ctx['metrics_date']}):
 both models evaluated on the {ctx['n_test_records']} test records of DS2 — {cnn['n']:,} beats from patients the models
-never saw.</p>
+never saw. {ctx['ensemble_sentence']}</p>
 <div class="cols-3 small">
 <div class="card"><b>Sensitivity (Se)</b> = TP / (TP + FN): how many of the true beats of a class were found.</div>
 <div class="card"><b>Positive predictive value (PPV, +P)</b> = TP / (TP + FP): how many of the model's alarms for a class
@@ -1103,41 +1139,89 @@ only for completeness: with {pct(ctx['n_share_test'])} normal beats it mostly me
 configuration on DS2, the values below (from the paper's abstract). It is the natural reference because it uses the
 same split{' and the same reference beat positions' if ctx['reference_peaks'] else ''}. A difference to keep in mind:
 their linear-discriminant classifier used hand-crafted morphology and interval features from <em>both</em> ECG
-leads, whereas this project uses one lead.</p>
+leads, {'as does the final CNN here' if ctx['leads'] == 2 else 'whereas this project uses one lead'}.</p>
 <table class="avoid"><thead><tr><th>Class</th><th>Model</th><th class="r">Se</th><th class="r">+P</th>
 <th class="r">FPR</th></tr></thead><tbody>{cmp_rows}</tbody></table>
 <p class="small muted" style="margin-top:1.5mm">{stats_note}</p>
 </div>
 {figure(ctx['fig_compare'], "<b>Figure 12.</b> Sensitivity (Se) and positive predictivity (+P) for S and V beats, in percent.")}
 </div>
-{cv_html}
+{extra}
 """
     return section("5 · Evaluation", "Results on unseen patients (DS2)", body)
 
 
-def cv_section(cv) -> str:
-    """Optional: record-grouped cross-validation on DS1, if metrics.json carries it (one report or {name: report})."""
-    if not isinstance(cv, dict):
+def detected_section(ctx: dict) -> str:
+    """Optional: DS2 evaluated end-to-end on Pan-Tompkins beats (metrics.json: detected_peaks)."""
+    d = ctx["detected"]
+    if not d:
         return ""
-    reports = {cv.get("features", "CNN"): cv} if "aggregate" in cv else {k: v for k, v in cv.items()
-                                                                          if isinstance(v, dict) and "aggregate" in v}
-    if not reports:
-        return ""
-    rows = ""
-    for name, r in reports.items():
-        a = r["aggregate"]
-        pcs = a.get("per_class", {})
-        rows += (f"<tr><td>{escape(str(name))}</td><td class='r'>{dec(a['macro_f1_nsvf'], 3)}</td>"
-                 + "".join(f"<td class='r'>{dec(pcs[c]['f1']) if c in pcs else '–'}</td>" for c in ("N", "S", "V"))
-                 + "</tr>")
-    first = next(iter(reports.values()))
-    cfg = first.get("config", {})
+    det = d.get("detector")
+    ref, tree_ref = ctx["cnn"], ctx["tree"]
+    detector = (f"On the {det['records']} DS2 records the detector finds {det['tp']:,} of {det['tp'] + det['fn']:,} "
+                f"annotated beats (sensitivity {pct(det['sensitivity'], 2)}) with {det['fp']:,} false detections "
+                f"(PPV {pct(det['ppv'], 2)}; tolerance ±{det['tol_ms']:g} ms). " if det else "")
     return f"""
-<h2>Cross-validation on DS1</h2>
-<p>Design decisions were made without touching DS2: record-grouped {cfg.get('k', '')}-fold cross-validation inside DS1,
-repeated with {len(cfg.get('seeds', [])) or 'several'} random seeds (mean ± standard deviation over seeds).</p>
-<table class="avoid"><thead><tr><th>Variant</th><th class="r">Macro-F1 (N, S, V, F)</th><th class="r">F1 N</th>
-<th class="r">F1 S</th><th class="r">F1 V</th></tr></thead><tbody>{rows}</tbody></table>"""
+<h2>End-to-end with Pan-Tompkins beats</h2>
+<p>The DS2 results above use the cardiologists' beat positions. A fully automatic system has to find the beats itself, so
+DS2 was also evaluated on the beats found by the Pan-Tompkins detector, with the same models. {detector}Each detected
+beat takes the class of the nearest annotated beat within 150 ms; detections without one are left out of the scoring,
+and beats the detector misses cannot be classified at all — so read the table together with the detector's
+sensitivity.</p>
+{class_table([("CNN · reference beats", ref), ("CNN · detected beats", d['cnn']['summary'])])}
+<p class="small muted" style="margin-top:1.5mm">{d['beats']:,} detected beats scored vs. {ref['n']:,} reference beats.
+Decision tree: macro-F1 (N, S, V, F) {dec(tree_ref['macro_f1_nsvf'])} on reference beats,
+{dec(d['tree']['summary']['macro_f1_nsvf'])} on detected beats.</p>"""
+
+
+def cv_section(cv, final: dict) -> str:
+    """Optional: CV block of metrics.json (record-grouped k-fold on DS1 only, see ekg.pipeline._cv_block)."""
+    if not isinstance(cv, dict) or "macro_f1_nsvf" not in cv:
+        return ""
+    n_seeds = len(cv.get("seeds", []))
+    rows = [(f"Single models (mean ± std over {n_seeds} seeds)", cv)]
+    if cv.get("ensemble"):
+        rows.append(("Seed ensemble", cv["ensemble"]))
+    if cv.get("ensemble_offsets_nested"):
+        rows.append(("Ensemble + class offsets (nested)", cv["ensemble_offsets_nested"]))
+    trs = "".join(f"<tr><td>{label}</td><td class='r'>{dec(s['macro_f1_nsvf'], 3)}</td>"
+                  + "".join(f"<td class='r'>{pct(s['per_class'][c][k])}</td>" for c in ("S", "V")
+                            for k in ("sensitivity", "ppv")) + "</tr>" for label, s in rows)
+    nested = (" In the “nested” row the offsets are fitted on the other folds only — an honest estimate of what they add."
+              if cv.get("ensemble_offsets_nested") else "")
+    return f"""
+<h2>Model selection on DS1 only ({cv.get('k', '')}-fold cross-validation)</h2>
+<p>Every design decision — training schedule, class weights, augmentation, the second lead, the seed ensemble and the
+class offsets — was made with record-grouped {cv.get('k', '')}-fold cross-validation inside DS1 ({n_seeds} seeds), never
+on DS2; experiments and decisions are logged in <code>docs/EXPERIMENTS.md</code> (plan steps A1–A8).{nested} The table
+shows the selected configuration; on DS2 the final model reaches a macro-F1 of {dec(final['macro_f1_nsvf'], 3)}
+(N, S, V, F).</p>
+<table class="avoid"><thead><tr><th>Cross-validation on DS1</th><th class="r">Macro-F1 (N, S, V, F)</th>
+<th class="r">S Se</th><th class="r">S PPV</th><th class="r">V Se</th><th class="r">V PPV</th></tr></thead>
+<tbody>{trs}</tbody></table>"""
+
+
+def external_section(ctx: dict) -> str:
+    """Optional: the final CNN applied unchanged to another database (metrics.json: external)."""
+    e = ctx["external"]
+    if not e:
+        return ""
+    db = escape(e.get("database", "an external database"))
+    lead = str(e.get("lead", ""))
+    name = escape(lead.split(" (")[0])
+    lead_note = (f"the database does not say which lead its channel {name} is, so it may differ from MLII" if "(" in lead
+                 else f"lead {name} is used")
+    models = f"ensemble of {ctx['n_models']} CNNs" if ctx["n_models"] > 1 else "CNN"
+    n_rec = e.get("records", 0)
+    return f"""
+<h2>External test: {db} (no retraining)</h2>
+<p>How well does the model transfer to recordings it was never developed on? The final {models} was applied
+unchanged — no retraining, no re-tuning of thresholds or offsets — to {n_rec} record{'s' if n_rec != 1 else ''} of the {db}. These
+were sampled at {e.get('fs_original', '?')} Hz and are resampled to {e.get('resampled_to', 360)} Hz before the same pipeline
+runs; {lead_note}. Patients, recording devices and annotators differ from MIT-BIH, so this is a robustness check rather
+than a like-for-like comparison with the DS2 numbers.</p>
+{class_table([("1D CNN on the external database", e['cnn']['summary'])], keys=("sensitivity", "ppv", "f1"),
+             beats=e.get('beats'))}"""
 
 
 def limitations_page(ctx: dict) -> str:
@@ -1156,12 +1240,9 @@ varies naturally in some patients.</p></div>
 <div class="card"><h3>Reference beat positions</h3>
 <p>{ctx['peaks_limit']}</p></div>
 <div class="card"><h3>Small, old, single-source data</h3>
-<p>44 usable records from one hospital, recorded in the late 1970s with Holter devices, one lead used. All results
-in this report come from MIT-BIH; it contains no external validation on other databases or modern wearables.</p></div>
+<p>{ctx['data_limit']}</p></div>
 <div class="card"><h3>Run-to-run variation</h3>
-<p>The reported model is a single training run (seed {ctx['metrics'].get('config', {}).get('seed', '–')}). Cross-validation
-inside DS1 showed that results move noticeably with the random seed and the fold split, so differences of a few
-points between variants should not be over-interpreted.</p></div>
+<p>{ctx['variation_limit']}</p></div>
 <div class="card"><h3>Not a medical device</h3>
 <p>This is a research and portfolio project. It has no clinical validation and no regulatory approval, and it must
 not be used to diagnose or treat anyone.</p></div>
@@ -1283,19 +1364,30 @@ def derived_texts(ctx: dict) -> None:
     cnn, tree = ctx["cnn"], ctx["tree"]
     pc = cnn["per_class"]
     runs = earlier_ds2_runs()
+    final_no = f"{['first', 'second', 'third', 'fourth'][len(runs)]}" if len(runs) < 4 else f"{len(runs) + 1}th"
+    if runs and ctx["preliminary"]:
+        ctx["ds2_history_short"] = (f"The test split DS2 was evaluated {times(len(runs))} during development "
+                                    "(documented); this build shows the last of those runs. DS2 is now locked until a "
+                                    f"single final evaluation, which will be the {final_no} and last.")
+        outcome = (f"The numbers in this preliminary build are those of run {runs[-1][0]}; the frozen final configuration "
+                   f"will be evaluated on DS2 exactly once, as the {final_no} and last DS2 evaluation, and reported "
+                   "whatever the outcome.")
+    elif runs:
+        ctx["ds2_history_short"] = (f"The test split DS2 was evaluated {times(len(runs))} during development "
+                                    f"(documented). The results shown are the {final_no} and last DS2 evaluation, run "
+                                    "once with the frozen final configuration.")
+        outcome = (f"The results in this report are the {final_no} and last evaluation of DS2, run exactly once with the "
+                   "frozen configuration and reported as they came out.")
     if runs:
         listing = "; ".join(f"run {n}: validation records {recs}, macro-F1 over five classes {f:.3f}" for n, recs, f in runs)
-        ctx["ds2_history_short"] = (f"The test split DS2 was evaluated {times(len(runs))} during development "
-                                    "(documented). Since then it is locked: further decisions use cross-validation on "
-                                    "DS1 only, and DS2 is evaluated once for the final result.")
         ctx["ds2_history_long"] = (
-            f"DS2 should ideally be evaluated exactly once. In this project it was evaluated {times(len(runs))} before "
-            f"the final run ({listing}; see <code>docs/EXPERIMENTS.md</code>). Between the runs, the choice of "
+            f"DS2 should ideally be evaluated exactly once. In this project it was evaluated {times(len(runs))} during "
+            f"development ({listing}; see <code>docs/EXPERIMENTS.md</code>). Between the runs, the choice of "
             "validation records was changed: record 208 holds about 90% of all DS1 fusion beats and was moved from "
             "validation back into training. The reason was a property of DS1, but the change was made after a DS2 "
-            "result was known, so a small optimistic bias cannot be ruled out. Since then the rule is strict: DS2 is "
-            "locked, every decision is made by record-grouped cross-validation on DS1 with a selection criterion fixed "
-            "in advance, and DS2 is evaluated once at the very end — and reported whatever the outcome.")
+            "result was known, so a small optimistic bias cannot be ruled out. After that, DS2 was locked: every "
+            "further decision (plan steps A1–A8 in <code>docs/EXPERIMENTS.md</code>) was made by record-grouped "
+            f"cross-validation on DS1 with a selection criterion fixed in advance. {outcome}")
     else:
         ctx["ds2_history_short"] = ("DS2 is locked during development; decisions use cross-validation on DS1 only "
                                     "(see docs/EXPERIMENTS.md).")
@@ -1338,6 +1430,95 @@ def derived_texts(ctx: dict) -> None:
                           "results would be somewhat lower; the detector itself was only checked in detail on single "
                           "records." if ref else
                           "Classification is evaluated end-to-end on detected beat positions.")
+    det = ctx["detected"]
+    if ref and det:
+        dd = det.get("detector")
+        if dd:
+            ctx["peaks_sentence"] = (f"On all {dd['records']} DS2 records the detector reaches a sensitivity of "
+                                     f"{pct(dd['sensitivity'], 2)} and a PPV of {pct(dd['ppv'], 2)}. The main results use "
+                                     "the cardiologists' reference beat positions, as in de Chazal et al. (2004); "
+                                     "chapter 5 adds an end-to-end evaluation on detected beats.")
+        ctx["peaks_limit"] = ("The main results use the cardiologists' beat positions, the usual protocol for "
+                              "comparability. End-to-end on Pan-Tompkins beats (chapter 5) the CNN reaches a macro-F1 "
+                              f"(N, S, V, F) of {dec(det['cnn']['summary']['macro_f1_nsvf'])} instead of "
+                              f"{dec(cnn['macro_f1_nsvf'])}; beats the detector misses are not scored there.")
+
+    # Final-schema extras: seed ensemble, class offsets, second lead, training setup.
+    cfg = m.get("config", {})
+    ens, agg = ctx["ensemble"], ctx["per_seed"]
+    seeds = (ens or {}).get("seeds") or [cfg.get("seed", 0)]
+    k = ctx["n_models"] = len(seeds)
+    offs = offsets_text((ens or {}).get("offsets") or cfg.get("offsets"))
+    single = f"a macro-F1 of {dec(agg['macro_f1_nsvf'])} (N, S, V, F)" if agg else ""
+    if k > 1:
+        ctx["cnn_phrase"] = f"an ensemble of {k} compact 1D CNNs ({ctx['params']:,} parameters each)"
+        ctx["ensemble_sentence"] = (
+            f"The CNN result comes from an ensemble of {k} models trained with different random seeds; their class "
+            "probabilities are averaged" + (", then shifted by per-class offsets fitted on DS1 out-of-fold predictions"
+                                            if offs else "") + "."
+            + (f" Evaluated one by one, the {k} models reach {single}." if single else ""))
+        ctx["ensemble_short"] = (f"The CNN is an ensemble of {k} models" + (f"; single models reach {single}" if single
+                                                                             else "") + ". ")
+        ctx["variation_limit"] = (f"The reported CNN averages {k} models trained with different seeds, which smooths out "
+                                  "part of the run-to-run variation" + (f"; the single models alone reach {single}"
+                                                                        if single else "")
+                                  + ". Differences of a few points between variants should not be over-interpreted.")
+    else:
+        ctx["cnn_phrase"] = f"a compact 1D CNN ({ctx['params']:,} parameters)"
+        ctx["ensemble_sentence"] = ("Before the decision, the CNN's class probabilities are shifted by per-class offsets "
+                                    "fitted on DS1 out-of-fold predictions." if offs else "")
+        ctx["ensemble_short"] = ""
+        ctx["variation_limit"] = (f"The reported model is a single training run (seed {seeds[0]}). Cross-validation "
+                                  "inside DS1 showed that results move noticeably with the random seed and the fold "
+                                  "split, so differences of a few points between variants should not be "
+                                  "over-interpreted.")
+    lead2 = cfg.get("lead2_names") or {}
+    two = ctx["leads"] == 2
+    ctx["lead2_data"] = ("; the final model also uses each record's second lead"
+                         + (f" ({lead2_text(lead2)})" if lead2 else "") if two else "")
+    ctx["lead2_model"] = (" In the final configuration the beat window has two channels: MLII and the record's second "
+                          "lead." if two else "")
+    ext = ctx["external"]
+    n_rec = ctx["stats"].get("records_available", 44)
+    ctx["data_limit"] = (
+        f"{n_rec} usable records from one hospital, recorded in the late 1970s with Holter devices, "
+        f"{'two leads' if two else 'one lead'} used. "
+        + (f"The only check on other data is the external test on the {escape(ext.get('database', 'external database'))} "
+           f"(chapter 5): macro-F1 {dec(ext['cnn']['summary']['macro_f1_nsvf'])} (N, S, V, F); modern wearables were "
+           "not tested." if ext else
+           "All results in this report come from MIT-BIH; it contains no external validation on other databases or "
+           "modern wearables."))
+
+    cap, p = ctx["weight_cap"], cfg.get("weight_power", 1.0)
+    weights = ("inverse class frequency" if p == 1 else "inverse square root of the class frequency" if p == 0.5
+               else f"class frequency to the power −{p:g}")
+    rows = [("Class weights", weights + (f", capped at {cap}× the most common class" if cap else ""))]
+    if {"lr", "batch_size", "epochs"} <= cfg.keys():
+        rows.append(("Optimizer", f"Adam, learning rate {cfg['lr']:g}, batches of {cfg['batch_size']} beats, "
+                                  f"up to {cfg['epochs']} epochs"))
+    rows.append(("Inputs", "lead MLII" + (" + second lead" if two else "") + ", 4 RR features"))
+    if cfg.get("augment"):
+        rows.append(("Augmentation", "random amplitude scaling, noise and small time shifts in every batch"))
+    if ens and k > 1 and ens.get("val_records"):
+        val_txt = "own DS1 records per seed — " + "; ".join(f"{s}: {', '.join(v)}" for s, v in ens["val_records"].items())
+    else:
+        val_txt = "DS1 records " + ", ".join(m.get("records", {}).get("val", []))
+    val_txt += (f"; early stopping after {cfg['patience']} epochs without improvement" if cfg.get("patience")
+                else "; no early stopping")
+    if cfg.get("max_class_share"):
+        val_txt += f"; records holding at least {cfg['max_class_share']:.0%} of a class stay in training"
+    rows.append(("Validation", val_txt))
+    rows.append(("Random seeds", f"{', '.join(map(str, seeds))} — one model per seed, probabilities averaged" if k > 1
+                 else f"{seeds[0]} (single model)"))
+    cnn_m = m["cnn"]
+    if ens and k > 1 and ens.get("best_epochs"):
+        rows.append(("Kept epochs", ", ".join(str(b) for b in ens["best_epochs"])
+                     + f" (of {', '.join(str(e) for e in ens.get('epochs_run', []))} run)"))
+    elif cnn_m.get("best_epoch") is not None:
+        rows.append(("Kept epoch", f"{cnn_m['best_epoch']} of {cnn_m.get('epochs_run', '?')} run"))
+    if offs:
+        rows.append(("Class offsets", f"{offs} on the log-probabilities, fitted on DS1 out-of-fold predictions"))
+    ctx["training_setup"] = rows
     seg = ctx["seg"]
     absent = [c for c in CLASSES if seg["counts"].get(c, 0) == 0]
     ctx["absent_classes_sentence"] = (f"Classes {' and '.join(absent)} do not occur in record {seg['record']}."
@@ -1348,12 +1529,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build docs/report/ekg-arrhythmia-report.pdf")
     parser.add_argument("--preliminary", action="store_true",
                         help="mark the PDF as preliminary (metrics from a development run, not the final DS2 evaluation)")
+    parser.add_argument("--data-dir", type=Path, default=DATA, help="folder with the JSON exports (default: %(default)s)")
+    parser.add_argument("--out", type=Path, default=PDF, help="output PDF (default: %(default)s)")
     args = parser.parse_args()
     BUILD.mkdir(exist_ok=True)
     setup_matplotlib()
-    metrics, stats = load("metrics"), load("dataset_stats")
-    signal, seg, fr = load("signal_demo"), load("segmentation_demo"), load("filter_response")
-    arch, tree = load("architecture"), load("tree")
+    metrics, stats = load(args.data_dir, "metrics"), load(args.data_dir, "dataset_stats")
+    signal, seg = load(args.data_dir, "signal_demo"), load(args.data_dir, "segmentation_demo")
+    fr, arch, tree = load(args.data_dir, "filter_response"), load(args.data_dir, "architecture"), load(args.data_dir, "tree")
     state = json.loads((ROOT / "project_state.json").read_text(encoding="utf-8"))
     if metrics.get("status") != "complete":
         print(f"metrics.json has status {metrics.get('status')!r} – a report needs a complete run.", file=sys.stderr)
@@ -1376,6 +1559,12 @@ def main() -> int:
         "review_findings": fm.group(1) if fm else None,
         "weight_cap": weight_cap(),
         "n_tests": count_tests(),
+        # Optional blocks of the final schema (absent in older exports).
+        "ensemble": metrics["cnn"].get("ensemble"),
+        "per_seed": metrics["cnn"].get("per_seed_aggregate"),
+        "leads": metrics.get("config", {}).get("leads", 1),
+        "detected": metrics.get("detected_peaks"),
+        "external": metrics.get("external"),
     }
     derived_texts(ctx)
     ctx.update({
@@ -1413,8 +1602,8 @@ def main() -> int:
 </body></html>"""
     page = BUILD / "report.html"
     page.write_text(html, encoding="utf-8")
-    render_pdf(page, PDF)
-    print(f"wrote {PDF.relative_to(ROOT)} ({PDF.stat().st_size / 1e6:.1f} MB)")
+    render_pdf(page, args.out)
+    print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)")
     return 0
 
 
