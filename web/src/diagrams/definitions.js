@@ -198,7 +198,7 @@ const DE = {
     fwd["Forward-Pass<br/>ECGNet1D → Logits B × 5"]:::proc
     loss["Gewichtete CrossEntropy<br/>Gewicht ∝ 1 / Klassenhäufigkeit"]:::proc
     bwd["Backpropagation<br/>Gradienten ∂L/∂θ"]:::proc
-    opt["Adam-Schritt<br/>Lernrate 1e-3"]:::proc
+    opt["Adam-Schritt<br/>Gewichte aktualisieren"]:::proc
     more{"Weitere Batches?"}:::decision
   end
   val["Validierung<br/>Macro-F1 auf DS1-Hold-out"]:::model
@@ -434,7 +434,7 @@ const EN = {
     fwd["Forward pass<br/>ECGNet1D → logits B × 5"]:::proc
     loss["Weighted CrossEntropy<br/>weight ∝ 1 / class frequency"]:::proc
     bwd["Backpropagation<br/>gradients ∂L/∂θ"]:::proc
-    opt["Adam step<br/>learning rate 1e-3"]:::proc
+    opt["Adam step<br/>update weights"]:::proc
     more{"More batches?"}:::decision
   end
   val["Validation<br/>macro-F1 on DS1 hold-out"]:::model
