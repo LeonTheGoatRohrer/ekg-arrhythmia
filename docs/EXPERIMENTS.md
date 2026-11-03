@@ -123,3 +123,11 @@ Pan-Tompkins-R-Zacken (Ende-zu-Ende).
 python -m ekg.pipeline train --features patient --seeds 0 1 2 3 4 --max-class-share 0.4 \
   --eval-detected --cv-report artifacts/cv/cv_patient_es.json
 ```
+
+**Nachtrag zur Transparenz (2026-11-03, während der finalen Rechnung, vor Sicht der
+DS2-Zahlen):** Das Kriterium dieses Protokolls („Mittelwert ≥ Basis + 1 Std der Basis“) wurde am
+2026-11-02 festgelegt, als das CV-Ergebnis von `patient` (0,481 ± 0,024) schon bekannt war. Unter
+der davor geltenden, strengeren Regel aus der ersten CV-Runde („Mittelwert > Basis + größere der
+beiden Std“, also > 0,484) wäre `patient` knapp nicht übernommen worden. Praktisch ist der
+Unterschied klein: Mit Seed-Ensemble liegen Basis und `patient` in der CV gleichauf (0,486 vs.
+0,483).
